@@ -64,7 +64,7 @@
                 <tbody id="file-list-disk">
                     {% if files %}
                         {% for file in files %}
-                        <tr class="file-item" style="border-bottom: 1px solid var(--border-color);" id="file-item-{{ file.file_id.replace(':', '-') }}">
+                        <tr class="file-item" style="border-bottom: 1px solid var(--border-color);" id="file-item-{{ file.file_id.replace(':', '-') }}" data-short-id="{{ file.short_id or '' }}" data-file-id="{{ file.file_id }}" data-filename="{{ file.filename }}">
                             <td style="padding: 12px 16px;"><input type="checkbox" class="file-checkbox" data-file-id="{{ file.file_id }}"></td>
                             <td style="padding: 12px 16px;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -76,10 +76,10 @@
                             <td style="padding: 12px 16px;" class="text-sm text-muted">{{ file.upload_date.split(' ')[0] }}</td>
                             <td style="padding: 12px 16px; text-align: right;">
                                 <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                                    <a href="/d/{{ file.file_id }}/{{ file.filename }}" class="btn btn-ghost" style="padding: 4px 8px; height: 28px;" title="下载">
+                                    <a href="/d/{{ file.short_id if file.short_id else file.file_id ~ '/' ~ file.filename }}" class="btn btn-ghost" style="padding: 4px 8px; height: 28px;" title="下载">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                     </a>
-                                    <button class="btn btn-ghost copy-link-btn" style="padding: 4px 8px; height: 28px;" onclick="Utils.copy('{{ request.url_for('download_file', file_id=file.file_id, filename=file.filename) }}')" title="复制链接">
+                                    <button class="btn btn-ghost copy-link-btn" style="padding: 4px 8px; height: 28px;" title="复制链接">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                     </button>
                                     <button class="btn btn-ghost delete" style="padding: 4px 8px; height: 28px; color: var(--danger-color);" onclick="deleteFile('{{ file.file_id }}')" title="删除">

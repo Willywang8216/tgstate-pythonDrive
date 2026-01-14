@@ -2,6 +2,8 @@ import logging
 import os
 import sqlite3
 import threading
+import string
+import random
 
 DATA_DIR = os.getenv("DATA_DIR", "app/data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -18,6 +20,10 @@ def get_db_connection() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     return conn
 
+def generate_short_id(length=6):
+    chars = string.ascii_letters + string.digits
+    return ''.join(random.choice(chars) for _ in range(length))
+
 def init_db() -> None:
     """初始化数据库，创建表。"""
     with db_lock:
@@ -30,9 +36,18 @@ def init_db() -> None:
                     filename TEXT NOT NULL,
                     file_id TEXT NOT NULL UNIQUE,
                     filesize INTEGER NOT NULL,
-                    upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    short_id TEXT UNIQUE
                 );
             """)
+            
+            # 检查 short_id 列是否存在，不存在则添加 (简单的 migration)
+            cursor.execute("PRAGMA table_info(files)")
+            columns = [info[1] for info in cursor.fetchall()]
+            if "short_id" not in columns:
+                logger.info("Migrating database: adding short_id column...")
+                cursor.execute("ALTER TABLE files ADD COLUMN short_id TEXT UNIQUE")
+            
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS app_settings (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -50,21 +65,47 @@ def init_db() -> None:
         finally:
             conn.close()
 
-def add_file_metadata(filename: str, file_id: str, filesize: int):
+def add_file_metadata(filename: str, file_id: str, filesize: int) -> str:
     """
     向数据库中添加一个新的文件元数据记录。
     如果 file_id 已存在，则忽略。
+    返回: short_id
     """
     with db_lock:
         conn = get_db_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute(
-                "INSERT OR IGNORE INTO files (filename, file_id, filesize) VALUES (?, ?, ?)",
-                (filename, file_id, filesize)
-            )
-            conn.commit()
-            logger.info("已添加或忽略文件元数据: %s", filename)
+            
+            # 尝试生成唯一的 short_id
+            for _ in range(5):
+                short_id = generate_short_id()
+                try:
+                    cursor.execute(
+                        "INSERT INTO files (filename, file_id, filesize, short_id) VALUES (?, ?, ?, ?)",
+                        (filename, file_id, filesize, short_id)
+                    )
+                    conn.commit()
+                    logger.info("已添加文件元数据: %s, short_id: %s", filename, short_id)
+                    return short_id
+                except sqlite3.IntegrityError as e:
+                    if "short_id" in str(e):
+                        continue # 冲突重试
+                    # 可能是 file_id 冲突，如果是这样，查询现有的 short_id
+                    cursor.execute("SELECT short_id FROM files WHERE file_id = ?", (file_id,))
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        return row[0]
+                    # 如果有记录但没 short_id (旧数据)，更新它
+                    if row:
+                        short_id = generate_short_id()
+                        cursor.execute("UPDATE files SET short_id = ? WHERE file_id = ?", (short_id, file_id))
+                        conn.commit()
+                        return short_id
+                    raise e
+            
+            # 如果多次重试失败（极低概率），抛错
+            raise Exception("Failed to generate unique short_id")
+            
         finally:
             conn.close()
 
@@ -74,23 +115,34 @@ def get_all_files() -> list[dict]:
         conn = get_db_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT filename, file_id, filesize, upload_date FROM files ORDER BY upload_date DESC")
-            files = [dict(row) for row in cursor.fetchall()]
+            cursor.execute("SELECT filename, file_id, filesize, upload_date, short_id FROM files ORDER BY upload_date DESC")
+            files = []
+            for row in cursor.fetchall():
+                d = dict(row)
+                # 兼容旧数据，如果没有 short_id，这里不做处理，显示时前端可能需要 fallback
+                # 但最好是迁移时补全，这里先返回
+                files.append(d)
             return files
         finally:
             conn.close()
 
-def get_file_by_id(file_id: str) -> dict | None:
-    """通过 file_id 从数据库中获取单个文件元数据。"""
+def get_file_by_id(identifier: str) -> dict | None:
+    """通过 file_id 或 short_id 从数据库中获取单个文件元数据。"""
     with db_lock:
         conn = get_db_connection()
         try:
             cursor = conn.cursor()
-            # 使用复合 ID 进行查询
-            cursor.execute("SELECT filename, filesize, upload_date FROM files WHERE file_id = ?", (file_id,))
+            # 优先匹配 short_id，然后 file_id
+            cursor.execute("SELECT filename, filesize, upload_date, file_id, short_id FROM files WHERE short_id = ? OR file_id = ?", (identifier, identifier))
             result = cursor.fetchone()
             if result:
-                return {"filename": result[0], "filesize": result[1], "upload_date": result[2]}
+                return {
+                    "filename": result["filename"],
+                    "filesize": result["filesize"],
+                    "upload_date": result["upload_date"],
+                    "file_id": result["file_id"],
+                    "short_id": result["short_id"]
+                }
             return None
         finally:
             conn.close()

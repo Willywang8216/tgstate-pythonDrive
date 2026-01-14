@@ -47,6 +47,7 @@ def build_file_event(
     filename: str | None = None,
     filesize: int | None = None,
     upload_date: str | None = None,
+    short_id: str | None = None,
 ) -> dict:
     return {
         "action": action,
@@ -54,4 +55,5 @@ def build_file_event(
         "filename": filename,
         "filesize": filesize,
         "upload_date": upload_date,
+        "short_id": short_id,
     }

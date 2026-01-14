@@ -68,7 +68,7 @@ async def handle_new_file(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             # 使用复合ID "message_id:file_id"
             composite_id = f"{message.message_id}:{file_obj.file_id}"
             
-            database.add_file_metadata(
+            short_id = database.add_file_metadata(
                 filename=file_name,
                 file_id=composite_id,
                 filesize=file_obj.file_size
@@ -81,6 +81,7 @@ async def handle_new_file(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 filename=file_name,
                 filesize=file_obj.file_size,
                 upload_date=upload_date,
+                short_id=short_id,
             )
             await file_update_queue.put(json.dumps(file_event))
 

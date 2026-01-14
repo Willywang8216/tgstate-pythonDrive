@@ -20,18 +20,15 @@ from .common import http_error
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-
-@router.get("/d/{file_id}/{filename}")
-async def download_file(
+async def serve_file(
     file_id: str,
     filename: str,
-    client: httpx.AsyncClient = Depends(get_http_client),
+    telegram_service: TelegramService,
+    client: httpx.AsyncClient
 ):
-    try:
-        telegram_service = get_telegram_service()
-    except Exception:
-        raise http_error(503, "未配置 BOT_TOKEN/CHANNEL_NAME，下载不可用", code="cfg_missing")
-
+    """
+    Common logic to serve a file given its file_id (composite) and filename.
+    """
     try:
         _, real_file_id = file_id.split(":", 1)
     except ValueError:
@@ -49,6 +46,7 @@ async def download_file(
     except httpx.RequestError as e:
         raise http_error(503, "无法连接到 Telegram 服务器。", code="tg_unreachable", details=str(e))
 
+    # Check for manifest (large file split)
     if first_bytes.startswith(b"tgstate-blob\n"):
         manifest_resp = await client.get(download_url)
         manifest_resp.raise_for_status()
@@ -60,10 +58,16 @@ async def download_file(
         original_filename = lines[1]
         chunk_file_ids = [cid for cid in lines[2:] if cid.strip()]
 
-        filename_encoded = quote(str(original_filename))
+        # Use the original filename from manifest if available, though we passed one in.
+        # Usually they match. We'll use the one passed in for Content-Disposition if provided,
+        # but manifest's filename is the source of truth for the content.
+        # Let's stick to the one passed in for the header.
+        
+        filename_encoded = quote(str(filename))
         response_headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"}
         return StreamingResponse(stream_chunks(chunk_file_ids, telegram_service, client), headers=response_headers)
 
+    # Standard single file
     image_extensions = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp")
     is_image = filename.lower().endswith(image_extensions)
 
@@ -86,6 +90,44 @@ async def download_file(
                 yield chunk
 
     return StreamingResponse(single_file_streamer(), headers=response_headers)
+
+
+@router.get("/d/{file_id}/{filename}")
+async def download_file_legacy(
+    file_id: str,
+    filename: str,
+    client: httpx.AsyncClient = Depends(get_http_client),
+):
+    """
+    Legacy route for downloading files using explicit file_id and filename.
+    """
+    try:
+        telegram_service = get_telegram_service()
+    except Exception:
+        raise http_error(503, "未配置 BOT_TOKEN/CHANNEL_NAME，下载不可用", code="cfg_missing")
+
+    return await serve_file(file_id, filename, telegram_service, client)
+
+
+@router.get("/d/{identifier}")
+async def download_file_short(
+    identifier: str,
+    client: httpx.AsyncClient = Depends(get_http_client),
+):
+    """
+    New route for downloading files using short_id (or checking file_id).
+    """
+    try:
+        telegram_service = get_telegram_service()
+    except Exception:
+        raise http_error(503, "未配置 BOT_TOKEN/CHANNEL_NAME，下载不可用", code="cfg_missing")
+
+    # Lookup metadata
+    meta = database.get_file_by_id(identifier)
+    if not meta:
+         raise http_error(404, "文件不存在", code="file_not_found")
+
+    return await serve_file(meta['file_id'], meta['filename'], telegram_service, client)
 
 
 @router.get("/api/files")
@@ -137,7 +179,7 @@ async def batch_delete_files(
 
     for file_id in request_data.file_ids:
         try:
-            response = await delete_file(file_id, telegram_service)
+            response = await delete_file(file_id)
             successful_deletions.append(response)
         except Exception as e:
             if hasattr(e, "detail"):
@@ -175,4 +217,3 @@ async def stream_chunks(chunk_composite_ids, telegram_service: TelegramService, 
                         yield chunk_data
         except httpx.RequestError:
             break
-

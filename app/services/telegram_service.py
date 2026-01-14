@@ -106,12 +106,12 @@ class TelegramService:
                 total_size = os.path.getsize(file_path)
                 # 创建复合ID，格式为 "message_id:file_id"
                 composite_id = f"{message.message_id}:{message.document.file_id}"
-                database.add_file_metadata(
+                short_id = database.add_file_metadata(
                     filename=original_filename,
                     file_id=composite_id, # 我们存储复合ID
                     filesize=total_size
                 )
-                return composite_id # 返回复合ID
+                return short_id # 返回 short_id
         except Exception as e:
             logger.error("上传清单文件时出错: %s", e)
         
@@ -127,7 +127,7 @@ class TelegramService:
             file_name: 文件名。
 
         返回:
-            如果成功，则返回文件的 file_id，否则返回 None。
+            如果成功，则返回文件的 short_id，否则返回 None。
         """
         if not self.channel_name:
             logger.error("环境变量中未设置 CHANNEL_NAME")
@@ -163,12 +163,12 @@ class TelegramService:
                 # 将小文件的元数据存入数据库
                 # 创建复合ID，格式为 "message_id:file_id"
                 composite_id = f"{message.message_id}:{message.document.file_id}"
-                database.add_file_metadata(
+                short_id = database.add_file_metadata(
                     filename=file_name,
                     file_id=composite_id, # 存储复合ID
                     filesize=file_size
                 )
-                return composite_id # 返回复合ID
+                return short_id # 返回 short_id
         except Exception as e:
             logger.error("上传文件到 Telegram 时出错: %s", e)
         

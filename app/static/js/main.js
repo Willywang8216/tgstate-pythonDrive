@@ -6,6 +6,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const doneArea = document.getElementById('done-zone');
     const searchInput = document.getElementById('file-search');
     
+    // --- Copy Link Delegation ---
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.copy-link-btn');
+        if (!btn) return;
+        
+        // Prevent default if it's a link (though it's a button)
+        e.preventDefault();
+        e.stopPropagation();
+
+        const item = btn.closest('.file-item, .image-card');
+        if (!item) return; // Should exist
+        
+        // 如果按钮上有 onclick 属性（旧代码或特殊情况），优先执行 onclick，这里不处理
+        if (btn.hasAttribute('onclick')) return;
+
+        const shortId = item.dataset.shortId;
+        const fileId = item.dataset.fileId;
+        const filename = item.dataset.filename;
+        
+        if (window.copyLink) {
+            window.copyLink(shortId, fileId, filename);
+        } else {
+            // Fallback if ui.js copyLink is missing
+            const url = item.dataset.fileUrl || (shortId ? `/d/${shortId}` : `/d/${fileId}/${encodeURIComponent(filename)}`);
+            Utils.copy(url);
+        }
+    });
+
     // --- Search Functionality ---
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
@@ -127,9 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Success Toast
                     if (window.Toast) Toast.show(`${file.name} 上传成功`);
                     
-                    // Add to done area (optional, maybe just refresh list or prepend)
-                    // For now, we rely on SSE or manual refresh for list update, 
-                    // but we can show a success card.
+                    // Add to done area
                     const successHTML = `
                         <div class="card" style="padding: 16px; margin-bottom: 12px; border-left: 4px solid var(--success-color);">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -325,12 +351,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const formattedSize = (file.filesize / (1024 * 1024)).toFixed(2) + " MB";
         const formattedDate = formatDateValue(file.upload_date);
         const safeId = file.file_id.replace(':', '-');
-        const fileUrl = `/d/${file.file_id}/${encodeURIComponent(file.filename)}`;
+        
+        // URL construction: use short_id if available
+        let fileUrl;
+        if (file.short_id) {
+            fileUrl = `/d/${file.short_id}`;
+        } else {
+            fileUrl = `/d/${file.file_id}/${encodeURIComponent(file.filename)}`;
+        }
 
         let html = '';
         if (isGridView) {
              html = `
-                <div class="file-item" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-body);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}">
+                <div class="file-item" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-body);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}">
                     <div style="position: relative; aspect-ratio: 16/9; background: #000;">
                         <img src="${fileUrl}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain;" alt="${file.filename}">
                         <div style="position: absolute; top: 8px; left: 8px;">
@@ -341,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="text-sm font-medium" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;" title="${file.filename}">${file.filename}</div>
                         <div class="text-sm text-muted" style="margin-bottom: 12px;">${formattedSize}</div>
                         <div style="display: flex; gap: 8px;">
-                            <button class="btn btn-secondary btn-sm copy-link-btn" style="flex: 1; height: 32px;" onclick="Utils.copy('${fileUrl}')">复制</button>
+                            <button class="btn btn-secondary btn-sm copy-link-btn" style="flex: 1; height: 32px;">复制</button>
                             <button class="btn btn-secondary btn-sm delete" style="height: 32px; color: var(--danger-color);" onclick="deleteFile('${file.file_id}')">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                             </button>
@@ -350,7 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
         } else {
             html = `
-                <tr class="file-item" style="border-bottom: 1px solid var(--border-color);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}">
+                <tr class="file-item" style="border-bottom: 1px solid var(--border-color);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}">
                     <td style="padding: 12px 16px;"><input type="checkbox" class="file-checkbox" data-file-id="${file.file_id}"></td>
                     <td style="padding: 12px 16px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -365,7 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <a href="${fileUrl}" class="btn btn-ghost" style="padding: 4px 8px; height: 28px;" title="下载">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                             </a>
-                            <button class="btn btn-ghost copy-link-btn" style="padding: 4px 8px; height: 28px;" onclick="Utils.copy('${fileUrl}')" title="复制链接">
+                            <button class="btn btn-ghost copy-link-btn" style="padding: 4px 8px; height: 28px;" title="复制链接">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                             </button>
                             <button class="btn btn-ghost delete" style="padding: 4px 8px; height: 28px; color: var(--danger-color);" onclick="deleteFile('${file.file_id}')" title="删除">
