@@ -1,4 +1,4 @@
-// Theme System
+// 主题系统
 const Theme = {
     key: 'tgstate_theme_pref',
     
@@ -18,13 +18,17 @@ const Theme = {
         
         document.documentElement.setAttribute('data-theme', effectiveMode);
         
-        // Update toggle UI if exists
+        // 更新 UI 状态
         const toggles = document.querySelectorAll('.theme-toggle-btn');
         toggles.forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.mode === mode);
+            const label = btn.querySelector('.theme-label');
+            if (label) {
+                const map = { 'auto': '跟随系统', 'light': '浅色模式', 'dark': '深色模式' };
+                label.textContent = map[mode];
+            }
         });
         
-        // Dispatch event
+        // 触发事件
         window.dispatchEvent(new CustomEvent('themeChanged', { detail: mode }));
     },
     
@@ -34,10 +38,16 @@ const Theme = {
                 this.set('auto', false);
             }
         });
+    },
+
+    cycle() {
+        const current = localStorage.getItem(this.key) || 'auto';
+        const map = { 'auto': 'light', 'light': 'dark', 'dark': 'auto' };
+        this.set(map[current]);
     }
 };
 
-// Toast System
+// Toast 提示系统
 const Toast = {
     container: null,
     
@@ -68,6 +78,12 @@ const Toast = {
         
         this.container.appendChild(el);
         
+        // 动画进入
+        requestAnimationFrame(() => {
+            el.style.transform = 'translateY(0)';
+            el.style.opacity = '1';
+        });
+        
         setTimeout(() => {
             el.style.opacity = '0';
             el.style.transform = 'translateY(20px)';
@@ -76,7 +92,7 @@ const Toast = {
     }
 };
 
-// Utils
+// 通用工具
 const Utils = {
     async copy(text) {
         try {
@@ -84,7 +100,7 @@ const Utils = {
             Toast.show('已复制到剪贴板');
             return true;
         } catch (err) {
-            Toast.show('复制失败', 'error');
+            Toast.show('复制失败，请手动复制', 'error');
             return false;
         }
     },
@@ -104,7 +120,26 @@ const Utils = {
     }
 };
 
-// Initialize
+// 初始化
 document.addEventListener('DOMContentLoaded', () => {
     Theme.init();
+    
+    // 侧边栏/移动端菜单切换
+    const toggleBtn = document.querySelector('.menu-toggle');
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.querySelector('.sidebar-overlay');
+    
+    if (toggleBtn && sidebar) {
+        toggleBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('active');
+            if (overlay) overlay.classList.toggle('active');
+        });
+    }
+    
+    if (overlay) {
+        overlay.addEventListener('click', () => {
+            sidebar.classList.remove('active');
+            overlay.classList.remove('active');
+        });
+    }
 });

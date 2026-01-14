@@ -25,29 +25,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Upload Logic ---
     if (uploadArea && fileInput) {
-        const botReady = uploadArea.dataset && uploadArea.dataset.botReady === '1';
-
+        // 在新版逻辑中，如果 bot 未就绪，后端 API 会拦截，前端此处可以放宽，
+        // 但为了更好的体验，依然可以检查。不过现在的 empty-state 已经覆盖了未配置的情况。
+        
         uploadArea.addEventListener('click', () => {
-            if (!botReady) {
-                if (typeof showToast === 'function') showToast('请先在 Settings 填写 BOT_TOKEN 与 CHANNEL_NAME。', 'error');
-                return;
-            }
             fileInput.click();
         });
 
         uploadArea.addEventListener('dragover', (event) => {
             event.preventDefault();
-            uploadArea.classList.add('active');
+            uploadArea.style.borderColor = 'var(--primary-color)';
+            uploadArea.style.backgroundColor = 'var(--bg-surface-hover)';
         });
 
         uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('active');
+            uploadArea.style.borderColor = '';
+            uploadArea.style.backgroundColor = '';
         });
 
         uploadArea.addEventListener('drop', (event) => {
             event.preventDefault();
-            uploadArea.classList.remove('active');
-            if (!botReady) return;
+            uploadArea.style.borderColor = '';
+            uploadArea.style.backgroundColor = '';
             const files = event.dataTransfer.files;
             if (files.length > 0) {
                 handleFiles(files);
@@ -55,7 +54,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         fileInput.addEventListener('change', ({ target }) => {
-            if (!botReady) return;
             if (target.files.length > 0) {
                 handleFiles(target.files);
             }
@@ -67,11 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isUploading = false;
 
     function handleFiles(files) {
-        // Clear previous progress if needed, or keep history? 
-        // Let's keep history for this session but maybe clear if it gets too long?
-        // For now, simple behavior:
         if (progressArea) progressArea.innerHTML = ''; 
-        // doneArea.innerHTML = ''; // Optional: keep uploaded history
         
         for (const file of files) {
             uploadQueue.push(file);
@@ -100,21 +94,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const fileId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
             // Initial Progress UI
+            // 使用新版 UI 风格
             const progressHTML = `
-                <div class="upload-row" id="progress-${fileId}">
-                    <div class="content">
-                        <div class="details">
-                            <span class="name">${file.name}</span>
-                            <div class="progress-bar"><div class="progress" style="width: 0%"></div></div>
-                        </div>
+                <div class="card" id="progress-${fileId}" style="padding: 16px; margin-bottom: 12px; border: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="font-size: 14px; font-weight: 500;">${file.name}</span>
+                        <span class="percent" style="font-size: 12px; color: var(--text-secondary);">0%</span>
+                    </div>
+                    <div style="height: 4px; background: var(--bg-surface-hover); border-radius: 2px; overflow: hidden;">
+                        <div class="progress-bar" style="width: 0%; height: 100%; background: var(--primary-color); transition: width 0.2s;"></div>
                     </div>
                 </div>`;
+            
             if (progressArea) progressArea.insertAdjacentHTML('beforeend', progressHTML);
-            const progressBar = document.querySelector(`#progress-${fileId} .progress`);
+            const progressEl = document.querySelector(`#progress-${fileId} .progress-bar`);
+            const percentEl = document.querySelector(`#progress-${fileId} .percent`);
 
             xhr.upload.onprogress = ({ loaded, total }) => {
                 const percent = Math.floor((loaded / total) * 100);
-                if (progressBar) progressBar.style.width = `${percent}%`;
+                if (progressEl) progressEl.style.width = `${percent}%`;
+                if (percentEl) percentEl.textContent = `${percent}%`;
             };
 
             xhr.onload = () => {
@@ -124,19 +123,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (xhr.status === 200) {
                     const response = JSON.parse(xhr.responseText);
                     const fileUrl = response.url;
+                    
+                    // Success Toast
+                    if (window.Toast) Toast.show(`${file.name} 上传成功`);
+                    
+                    // Add to done area (optional, maybe just refresh list or prepend)
+                    // For now, we rely on SSE or manual refresh for list update, 
+                    // but we can show a success card.
                     const successHTML = `
-                        <div class="upload-row">
-                            <div class="content">
-                                <div class="details">
-                                    <span class="name">${file.name}</span>
-                                    <span class="status"><a href="${fileUrl}" target="_blank">${fileUrl}</a></span>
+                        <div class="card" style="padding: 16px; margin-bottom: 12px; border-left: 4px solid var(--success-color);">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="overflow: hidden; margin-right: 12px;">
+                                    <div style="font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${file.name}</div>
+                                    <a href="${fileUrl}" target="_blank" style="font-size: 12px; color: var(--primary-color);">${fileUrl}</a>
                                 </div>
+                                <button class="btn btn-secondary btn-sm" onclick="Utils.copy('${fileUrl}')">复制</button>
                             </div>
-                            <button class="action-btn" onclick="copyLink('${fileUrl}')" data-tooltip="Copy">Copy</button>
                         </div>`;
                     if (doneArea) doneArea.insertAdjacentHTML('afterbegin', successHTML);
                 } else {
-                    let errorMsg = "Upload Failed";
+                    let errorMsg = "上传失败";
                     try {
                         const parsed = JSON.parse(xhr.responseText);
                         const detail = parsed && parsed.detail;
@@ -149,16 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } catch (e) {}
                     
-                    const errorHTML = `
-                        <div class="upload-row" style="border-color: var(--danger-color)">
-                            <div class="content">
-                                <div class="details">
-                                    <span class="name">${file.name}</span>
-                                    <span class="status" style="color: var(--danger-color)">${errorMsg}</span>
-                                </div>
-                            </div>
-                        </div>`;
-                    if (doneArea) doneArea.insertAdjacentHTML('afterbegin', errorHTML);
+                    if (window.Toast) Toast.show(errorMsg, 'error');
                 }
                 resolve();
             };
@@ -166,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
             xhr.onerror = () => {
                 const progressRow = document.getElementById(`progress-${fileId}`);
                 if (progressRow) progressRow.remove();
-                // Handle network error UI...
+                if (window.Toast) Toast.show('网络错误', 'error');
                 resolve();
             };
 
@@ -179,6 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const batchDeleteBtn = document.getElementById('batch-delete-btn');
     const copyLinksBtn = document.getElementById('copy-links-btn');
     const selectionCounter = document.getElementById('selection-counter');
+    const batchActionsBar = document.getElementById('batch-actions-bar');
     const formatOptions = document.querySelectorAll('.format-option');
 
     function updateBatchControls() {
@@ -186,17 +184,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const checked = document.querySelectorAll('.file-checkbox:checked');
         const count = checked.length;
         
-        if (selectionCounter) selectionCounter.textContent = count > 0 ? `${count} selected` : '';
-        if (batchDeleteBtn) batchDeleteBtn.disabled = count === 0;
-        if (copyLinksBtn) copyLinksBtn.disabled = count === 0;
-        if (selectAllCheckbox) selectAllCheckbox.checked = (count > 0 && count === checkboxes.length);
+        if (selectionCounter) selectionCounter.textContent = count > 0 ? `${count} 项已选` : '0 项已选';
+        
+        if (batchActionsBar) {
+            if (count > 0) {
+                batchActionsBar.classList.remove('hidden');
+            } else {
+                batchActionsBar.classList.add('hidden');
+            }
+        }
 
-        // Highlight selected rows
-        document.querySelectorAll('.file-item, .image-card').forEach(row => {
-            const cb = row.querySelector('.file-checkbox');
-            if (cb && cb.checked) row.classList.add('selected'); // Add CSS class if needed for highlight
-            else row.classList.remove('selected');
-        });
+        if (selectAllCheckbox) selectAllCheckbox.checked = (count > 0 && count === checkboxes.length);
     }
 
     if (selectAllCheckbox) {
@@ -244,9 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return url;
             });
 
-            navigator.clipboard.writeText(links.join('\n')).then(() => {
-                showToast(`Copied ${links.length} links!`);
-            });
+            Utils.copy(links.join('\n'));
         });
     }
 
@@ -256,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const checked = document.querySelectorAll('.file-checkbox:checked');
             if (checked.length === 0) return;
 
-            if (!confirm(`Delete ${checked.length} files?`)) return;
+            if (!confirm(`确定要删除选中的 ${checked.length} 个文件吗？`)) return;
 
             const fileIds = Array.from(checked).map(cb => cb.dataset.fileId);
             
@@ -267,14 +263,12 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .then(res => res.json())
             .then(data => {
-                // Remove elements
                 if (data.deleted) {
                     data.deleted.forEach(item => {
-                         // The ID might be the object or string depending on backend
                          const id = item.details?.file_id || item; 
                          removeFileElement(id);
                     });
-                    showToast(`Deleted ${data.deleted.length} files.`);
+                    if (window.Toast) Toast.show(`已删除 ${data.deleted.length} 个文件`);
                 }
                 updateBatchControls();
             });
@@ -321,7 +315,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function addNewFileElement(file) {
-        // Determine if we are in list view (index) or grid view (image)
         const isGridView = document.querySelector('.image-grid') !== null;
         const container = document.getElementById('file-list-disk');
         
@@ -332,66 +325,63 @@ document.addEventListener('DOMContentLoaded', () => {
         const formattedSize = (file.filesize / (1024 * 1024)).toFixed(2) + " MB";
         const formattedDate = formatDateValue(file.upload_date);
         const safeId = file.file_id.replace(':', '-');
-         const fileUrl = `/d/${file.file_id}/${encodeURIComponent(file.filename)}`;
+        const fileUrl = `/d/${file.file_id}/${encodeURIComponent(file.filename)}`;
 
         let html = '';
-                if (isGridView) {
-                     html = `
-                <div class="image-card file-item-disk" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}">
-                    <div class="image-thumb-wrapper">
-                        <img src="${fileUrl}" loading="lazy" class="image-thumb" alt="${file.filename}">
-                         <div style="position: absolute; top: 8px; left: 8px;">
-                            <input type="checkbox" class="file-checkbox" data-file-id="${file.file_id}">
+        if (isGridView) {
+             html = `
+                <div class="file-item" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-body);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}">
+                    <div style="position: relative; aspect-ratio: 16/9; background: #000;">
+                        <img src="${fileUrl}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain;" alt="${file.filename}">
+                        <div style="position: absolute; top: 8px; left: 8px;">
+                            <input type="checkbox" class="file-checkbox" data-file-id="${file.file_id}" style="width: 16px; height: 16px; cursor: pointer;">
                         </div>
                     </div>
-                    <div class="image-info">
-                        <div class="image-name" title="${file.filename}">${file.filename}</div>
-                        <div class="image-meta">${formattedSize}</div>
-                    </div>
-                    <div class="image-actions">
-                        <button class="action-btn copy-link-btn" data-tooltip="Copy" onclick="copyLink('${fileUrl}')">Copy</button>
-                        <button class="action-btn delete" data-tooltip="Delete" onclick="deleteFile('${file.file_id}')">Delete</button>
+                    <div style="padding: 12px;">
+                        <div class="text-sm font-medium" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;" title="${file.filename}">${file.filename}</div>
+                        <div class="text-sm text-muted" style="margin-bottom: 12px;">${formattedSize}</div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-secondary btn-sm copy-link-btn" style="flex: 1; height: 32px;" onclick="Utils.copy('${fileUrl}')">复制</button>
+                            <button class="btn btn-secondary btn-sm delete" style="height: 32px; color: var(--danger-color);" onclick="deleteFile('${file.file_id}')">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>`;
         } else {
             html = `
-                <div class="file-item" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}">
-                    <div class="col-checkbox">
-                        <input type="checkbox" class="file-checkbox" data-file-id="${file.file_id}">
-                    </div>
-                    <div class="col-name">
-                        <span title="${file.filename}">${file.filename}</span>
-                    </div>
-                    <div class="col-size">${formattedSize}</div>
-                    <div class="col-date">${formattedDate}</div>
-                    <div class="col-actions">
-                        <a href="${fileUrl}" class="action-btn" data-tooltip="Download">Download</a>
-                        <button class="action-btn copy-link-btn" data-tooltip="Copy Link" onclick="copyLink('${fileUrl}')">Copy</button>
-                        <button class="action-btn delete" data-tooltip="Delete" onclick="deleteFile('${file.file_id}')">Delete</button>
-                    </div>
-                </div>`;
+                <tr class="file-item" style="border-bottom: 1px solid var(--border-color);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}">
+                    <td style="padding: 12px 16px;"><input type="checkbox" class="file-checkbox" data-file-id="${file.file_id}"></td>
+                    <td style="padding: 12px 16px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--primary-color);"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+                            <span class="text-sm font-medium" style="color: var(--text-primary);">${file.filename}</span>
+                        </div>
+                    </td>
+                    <td style="padding: 12px 16px;" class="text-sm text-muted">${formattedSize}</td>
+                    <td style="padding: 12px 16px;" class="text-sm text-muted">${formattedDate}</td>
+                    <td style="padding: 12px 16px; text-align: right;">
+                        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                            <a href="${fileUrl}" class="btn btn-ghost" style="padding: 4px 8px; height: 28px;" title="下载">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            </a>
+                            <button class="btn btn-ghost copy-link-btn" style="padding: 4px 8px; height: 28px;" onclick="Utils.copy('${fileUrl}')" title="复制链接">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            </button>
+                            <button class="btn btn-ghost delete" style="padding: 4px 8px; height: 28px; color: var(--danger-color);" onclick="deleteFile('${file.file_id}')" title="删除">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                        </div>
+                    </td>
+                </tr>`;
         }
 
-        // Insert at top
         container.insertAdjacentHTML('afterbegin', html);
     }
 
     // --- Global Helpers ---
-    window.copyLink = (path) => {
-        const url = window.location.origin + path;
-        navigator.clipboard.writeText(url).then(() => {
-            showToast('Link copied!');
-        });
-    };
-
     window.deleteFile = (fileId) => {
-        const zone = document.getElementById('upload-zone');
-        const botReady = zone && zone.dataset && zone.dataset.botReady === '1';
-        if (!botReady) {
-            showToast('请先在 Settings 填写 BOT_TOKEN 与 CHANNEL_NAME。', 'error');
-            return;
-        }
-        if (!confirm('Delete this file?')) return;
+        if (!confirm('确定要删除此文件吗？')) return;
         fetch(`/api/files/${fileId}`, { method: 'DELETE' })
             .then(async (res) => {
                 let data = null;
@@ -401,11 +391,11 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(({ ok, data }) => {
                 if (ok && data && data.status === 'ok') {
                     removeFileElement(fileId);
-                    showToast('File deleted.');
+                    if (window.Toast) Toast.show('文件已删除');
                     updateBatchControls();
                 } else {
-                    const msg = data?.detail?.message || data?.message || 'Delete failed.';
-                    showToast(msg, 'error');
+                    const msg = data?.detail?.message || data?.message || '删除失败';
+                    if (window.Toast) Toast.show(msg, 'error');
                 }
             });
     };
@@ -417,20 +407,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // Check if empty
         const container = document.getElementById('file-list-disk');
         if (container && container.children.length === 0) {
-            container.innerHTML = `
-                <div style="padding: 40px; text-align: center; color: var(--text-tertiary);">
-                    <p>No files found</p>
-                </div>`;
+            // Re-render empty state logic if needed, or let user refresh
+            // Simple text fallback
+            const isGridView = document.querySelector('.image-grid') !== null;
+            if (isGridView) {
+                 container.innerHTML = `
+                    <div style="grid-column: 1/-1; padding: 40px; text-align: center; color: var(--text-tertiary);">
+                        <p>暂无图片</p>
+                    </div>`;
+            } else {
+                 container.innerHTML = `
+                    <tr>
+                        <td colspan="5" style="padding: 48px; text-align: center;">
+                            <div class="text-muted">暂无文件</div>
+                        </td>
+                    </tr>`;
+            }
         }
-    }
-
-    function showToast(msg, type = 'success') {
-        const t = document.createElement('div');
-        t.className = 'ui-toast';
-        t.textContent = msg;
-        document.body.appendChild(t);
-        setTimeout(() => {
-            try { t.remove(); } catch (_) {}
-        }, 2600);
     }
 });

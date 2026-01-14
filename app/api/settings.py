@@ -162,7 +162,7 @@ async def verify_bot(payload: VerifyRequest):
     if not token:
         return {"status": "ok", "available": False, "message": "未提供 BOT_TOKEN"}
 
-    _validate_config({"BOT_TOKEN": token})
+    # _validate_config({"BOT_TOKEN": token})  # 暂时跳过严格格式验证，让 Telegram API 决定
     req = HTTPXRequest(connect_timeout=10.0, read_timeout=10.0, write_timeout=10.0)
     bot = telegram.Bot(token=token, request=req)
     try:

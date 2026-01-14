@@ -33,19 +33,8 @@ async def welcome_page(request: Request):
 @router.get("/", response_class=HTMLResponse)
 async def main_page(request: Request):
     """
-    提供主页。未初始化时显示欢迎页。
+    提供主页。鉴权由中间件处理。
     """
-    cfg = get_app_settings()
-    # 检查是否完成初始化：必须有密码、Token 和 Channel
-    is_initialized = (
-        (cfg.get("PASS_WORD") or "").strip() and
-        (cfg.get("BOT_TOKEN") or "").strip() and
-        (cfg.get("CHANNEL_NAME") or "").strip()
-    )
-    
-    if not is_initialized:
-        return templates.TemplateResponse("welcome.html", {"request": request})
-
     files = database.get_all_files()
     return templates.TemplateResponse("index.html", {"request": request, "files": files, "cfg": _page_cfg(request)})
 
