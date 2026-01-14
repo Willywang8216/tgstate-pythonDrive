@@ -13,25 +13,31 @@ COOKIE_NAME = "tgstate_session"
 @router.post("/api/auth/login")
 async def login(payload: LoginRequest, response: Response):
     active_password = get_active_password()
-    if payload.password == active_password:
+    # 确保密码比对时处理两端空格，避免复制粘贴带来的隐形字符问题
+    input_pwd = payload.password.strip()
+    stored_pwd = (active_password or "").strip()
+    
+    if input_pwd and input_pwd == stored_pwd:
         # 登录成功，设置 Cookie
-        response = JSONResponse(content={"status": "ok", "message": "Login successful"})
+        response = JSONResponse(content={"status": "ok", "message": "登录成功"})
+        # 关键修复：设置 secure=False 以支持 http://IP:PORT 访问
+        # samesite="Lax" 允许在同一站点导航时发送 Cookie
         response.set_cookie(
             key=COOKIE_NAME,
-            value=payload.password,
+            value=stored_pwd, # 保持与中间件一致，存储原密码值（或后续可升级为 Session Token）
             httponly=True,
             samesite="Lax",
             path="/",
-            # secure=True # 如果是 HTTPS 环境应该加上
+            secure=False # 兼容非 HTTPS 环境
         )
         return response
     else:
-        return JSONResponse(status_code=401, content={"status": "error", "message": "Invalid password"})
+        return JSONResponse(status_code=401, content={"status": "error", "message": "密码错误"})
 
 @router.post("/api/auth/logout")
-async def logout(response: Response):
+async def logout():
     # 登出，清除 Cookie
-    # 返回 204 No Content
-    response = Response(status_code=204)
+    # 修复：不依赖 response 参数，而是直接返回一个新的 Response
+    response = JSONResponse(content={"status": "ok", "message": "已退出登录"})
     response.delete_cookie(key=COOKIE_NAME, path="/", httponly=True, samesite="Lax")
     return response

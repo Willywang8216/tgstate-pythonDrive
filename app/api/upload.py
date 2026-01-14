@@ -18,6 +18,9 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+import re
+from .common import ensure_upload_auth, http_error, generate_slug
+
 @router.post("/api/upload")
 async def upload_file(
     request: Request,
@@ -54,23 +57,17 @@ async def upload_file(
         logger.error("上传失败（未返回 file_id）: %s", file.filename)
         raise http_error(500, "文件上传失败。", code="upload_failed")
 
-    # file_id 可能是 short_id (如果 add_file_metadata 返回了 short_id)
-    # 或者如果 upload_file 还是返回 composite_id，我们需要确认 telegram_service 的修改
-    # 假设 telegram_service 已经修改为返回 short_id
+    # 生成拼音 slug
+    slug = generate_slug(file.filename)
     
-    # 构造短链 URL
-    # 不再在 URL 中包含文件名
-    file_path = f"/d/{file_id}"
-    base_url = (app_settings.get("BASE_URL") or settings.BASE_URL).strip("/")
+    # 构造短链 URL: /d/{short_id}/{slug}
+    # 这里的 file_id 实际上是 short_id
+    file_path = f"/d/{file_id}/{slug}"
     
-    # 如果配置了 BASE_URL，则使用它；否则返回相对路径让前端处理
-    if base_url:
-        full_url = f"{base_url}{file_path}"
-    else:
-        # 如果没有 BASE_URL，我们也返回相对路径，前端会拼接 origin
-        full_url = file_path
+    # 始终返回相对路径，前端负责拼接 origin
+    # full_url 也尽量只返回相对路径，除非必须
+    full_url = file_path
 
-    logger.info("上传成功: %s -> %s", file.filename, file_id)
-    # 返回 short_id 方便前端使用
+    logger.info("上传成功: %s -> %s (slug: %s)", file.filename, file_id, slug)
     return {"path": file_path, "url": str(full_url), "short_id": file_id}
 

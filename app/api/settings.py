@@ -141,7 +141,8 @@ async def reset_config(request: Request):
 async def set_password(payload: PasswordRequest, request: Request):
     try:
         current = get_app_settings()
-        database.save_app_settings_to_db({**current, "PASS_WORD": payload.password})
+        pwd = (payload.password or "").strip()
+        database.save_app_settings_to_db({**current, "PASS_WORD": pwd})
         await apply_runtime_settings(request.app, start_bot=False)
         logger.info("密码已更新")
         return {"status": "ok", "message": "密码已成功设置。"}

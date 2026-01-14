@@ -56,8 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // 在新版逻辑中，如果 bot 未就绪，后端 API 会拦截，前端此处可以放宽，
         // 但为了更好的体验，依然可以检查。不过现在的 empty-state 已经覆盖了未配置的情况。
         
-        uploadArea.addEventListener('click', () => {
-            fileInput.click();
+        uploadArea.addEventListener('click', (e) => {
+            if (e.target !== fileInput) {
+                fileInput.click();
+            }
         });
 
         uploadArea.addEventListener('dragover', (event) => {
@@ -355,7 +357,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // URL construction: use short_id if available
         let fileUrl;
-        if (file.short_id) {
+        if (file.slug && file.short_id) {
+             fileUrl = `/d/${file.short_id}/${file.slug}`;
+        } else if (file.short_id) {
             fileUrl = `/d/${file.short_id}`;
         } else {
             fileUrl = `/d/${file.file_id}/${encodeURIComponent(file.filename)}`;

@@ -9,6 +9,7 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from .services.telegram_service import get_telegram_service
 from . import database
 from .events import file_update_queue, build_file_event
+from .api.common import generate_slug
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,7 @@ async def handle_new_file(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 filesize=file_obj.file_size,
                 upload_date=upload_date,
                 short_id=short_id,
+                slug=generate_slug(file_name),
             )
             await file_update_queue.put(json.dumps(file_event))
 

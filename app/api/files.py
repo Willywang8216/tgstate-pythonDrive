@@ -130,6 +130,18 @@ async def download_file_short(
     return await serve_file(meta['file_id'], meta['filename'], telegram_service, client)
 
 
+@router.get("/d/{identifier}/{slug}")
+async def download_file_short_slug(
+    identifier: str,
+    slug: str,
+    client: httpx.AsyncClient = Depends(get_http_client),
+):
+    """
+    Route for short_id + slug (vanity URL). Slug is ignored for lookup.
+    """
+    return await download_file_short(identifier, client)
+
+
 @router.get("/api/files")
 async def get_files_list():
     return database.get_all_files()

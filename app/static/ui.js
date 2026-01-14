@@ -1,3 +1,54 @@
+// Toast Notification
+const Toast = {
+    show(message, type = 'success') {
+        const container = document.getElementById('toast-container') || this.createContainer();
+        
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.style.cssText = `
+            background: var(--bg-surface); color: var(--text-primary);
+            padding: 12px 24px; border-radius: 8px; margin-top: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 14px;
+            display: flex; align-items: center; gap: 8px;
+            transform: translateY(-20px); opacity: 0; transition: all 0.3s;
+            border-left: 4px solid ${type === 'error' ? 'var(--danger-color)' : 'var(--success-color)'};
+        `;
+        
+        // Icon
+        const icon = type === 'error' 
+            ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger-color)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>'
+            : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success-color)" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            
+        toast.innerHTML = `${icon}<span>${message}</span>`;
+        
+        container.appendChild(toast);
+        
+        // Animate in
+        requestAnimationFrame(() => {
+            toast.style.transform = 'translateY(0)';
+            toast.style.opacity = '1';
+        });
+        
+        // Auto remove
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-20px)';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    },
+    
+    createContainer() {
+        const div = document.createElement('div');
+        div.id = 'toast-container';
+        div.style.cssText = `
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 2100; display: flex; flex-direction: column; align-items: center;
+        `;
+        document.body.appendChild(div);
+        return div;
+    }
+};
+
 // Modal System
 const Modal = {
     init() {
@@ -79,69 +130,86 @@ const Utils = {
             text = window.location.origin + text;
         }
 
-        try {
-            await navigator.clipboard.writeText(text);
-            Toast.show('已复制到剪贴板');
-            return true;
-        } catch (err) {
-            // Fallback for older browsers or mobile webview
+        const successToast = () => Toast.show('已复制到剪贴板');
+        const failToast = () => Toast.show('复制失败，请手动复制', 'error');
+
+        // 优先使用 navigator.clipboard
+        if (navigator.clipboard && navigator.clipboard.writeText) {
             try {
-                const textarea = document.createElement('textarea');
-                textarea.value = text;
-                textarea.style.position = 'fixed'; // Prevent scrolling
-                textarea.style.left = '-9999px';
-                textarea.style.top = '0';
-                document.body.appendChild(textarea);
-                textarea.focus();
-                textarea.select();
-                const successful = document.execCommand('copy');
-                document.body.removeChild(textarea);
-                if (successful) {
-                    Toast.show('已复制到剪贴板');
-                    return true;
-                }
-            } catch (fallbackErr) {
-                console.error(fallbackErr);
+                await navigator.clipboard.writeText(text);
+                successToast();
+                return true;
+            } catch (err) {
+                console.warn('Clipboard API failed, trying fallback...', err);
             }
-            
-            // Final fallback: Select text and prompt user
-            try {
-                const modal = document.createElement('div');
-                modal.style.cssText = `
-                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: rgba(0,0,0,0.5); z-index: 9999;
-                    display: flex; align-items: center; justify-content: center;
-                `;
-                const content = document.createElement('div');
-                content.style.cssText = `
-                    background: var(--bg-surface); padding: 20px; border-radius: 12px;
-                    width: 90%; max-width: 300px; text-align: center;
-                `;
-                content.innerHTML = `
-                    <p style="margin-bottom: 12px; font-weight: 500;">复制失败，请手动复制：</p>
-                    <textarea readonly style="width: 100%; height: 80px; margin-bottom: 12px; padding: 8px; border: 1px solid var(--border-color); border-radius: 8px;">${text}</textarea>
-                    <button class="btn btn-primary" style="width: 100%;">关闭</button>
-                `;
-                modal.appendChild(content);
-                document.body.appendChild(modal);
-                
-                const ta = content.querySelector('textarea');
-                ta.focus();
-                ta.select();
-                
-                content.querySelector('button').onclick = () => modal.remove();
-                modal.onclick = (e) => { if(e.target === modal) modal.remove(); };
-            } catch (e) {}
-            
-            return false;
         }
+
+        // Fallback: document.execCommand('copy')
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            // 必须可见才能被 select，使用 fixed 移出可视区但保持渲染
+            textarea.style.position = 'fixed';
+            textarea.style.left = '0';
+            textarea.style.top = '0';
+            textarea.style.opacity = '0.01';
+            textarea.style.pointerEvents = 'none';
+            textarea.setAttribute('readonly', ''); // 防止软键盘弹出
+            
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            
+            if (successful) {
+                successToast();
+                return true;
+            }
+        } catch (fallbackErr) {
+            console.error('Fallback copy failed:', fallbackErr);
+        }
+        
+        // Final fallback: Modal with text
+        try {
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.5); z-index: 9999;
+                display: flex; align-items: center; justify-content: center;
+            `;
+            const content = document.createElement('div');
+            content.style.cssText = `
+                background: var(--bg-surface); padding: 24px; border-radius: 12px;
+                width: 90%; max-width: 320px; text-align: center;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            `;
+            content.innerHTML = `
+                <p style="margin-bottom: 12px; font-weight: 500; color: var(--text-primary);">复制失败，请长按手动复制：</p>
+                <div style="background: var(--bg-body); padding: 8px; border-radius: 6px; margin-bottom: 16px; border: 1px solid var(--border-color);">
+                    <div style="word-break: break-all; font-family: monospace; font-size: 13px; color: var(--text-primary); user-select: text;">${text}</div>
+                </div>
+                <button class="btn btn-primary" style="width: 100%;">关闭</button>
+            `;
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+            
+            const closeBtn = content.querySelector('button');
+            const close = () => modal.remove();
+            
+            closeBtn.onclick = close;
+            modal.onclick = (e) => { if(e.target === modal) close(); };
+        } catch (e) {}
+        
+        return false;
     },
     
     setLoading(btn, isLoading) {
         if (!btn) return;
         if (isLoading) {
             btn.dataset.originalText = btn.innerHTML;
-            btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> 处理中...`;
+            btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> 处理中...`;
             btn.classList.add('loading');
             btn.disabled = true;
         } else {
@@ -155,8 +223,18 @@ const Utils = {
 // 复制文件链接的辅助函数
 window.copyLink = (shortId, fileId, filename) => {
     let path;
+    // 如果有 shortId，优先使用 /d/{shortId}
+    // 但如果有 filename，我们希望生成 /d/{shortId}/{slug}
+    // 前端简单起见，如果后端没返回 slug，我们暂且不自己生成 slug（太麻烦），
+    // 除非我们想在这里做拼音转换。
+    // 为了稳健，如果 URL 已经存在 dataset 里，优先用 dataset 的。
+    // 这里我们只负责拼接 path。
+    
     if (shortId && shortId !== 'None' && shortId !== '') {
         path = `/d/${shortId}`;
+        // 如果想加上 filename (slug)，可以 append。
+        // 但前端不知道 slug。假设后端返回的 path 已经包含了 slug (如果 upload 接口改了)。
+        // 这里的 fallback 逻辑保持简单。
     } else {
         path = `/d/${fileId}/${encodeURIComponent(filename)}`;
     }
