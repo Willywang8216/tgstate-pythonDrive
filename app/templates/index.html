@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Files - tgState{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Clean Upload Area -->
+    <div class="upload-container">
+        <div class="upload-area-dashed" id="upload-area">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>Drag files here or <span>Browse</span></p>
+            <input type="file" id="file-input" hidden multiple>
+        </div>
+        <div class="progress-area" id="progress-area"></div>
+        <div class="uploaded-area" id="uploaded-area"></div>
+    </div>
+
+    <!-- Controls: Search & Batch Actions -->
+    <div class="controls-bar">
+        <div class="search-container">
+            <i class="fas fa-search search-icon"></i>
+            <input type="text" id="file-search" placeholder="Search files..." class="search-input">
+        </div>
+        <div class="batch-actions">
+            <span id="selection-counter" class="text-muted" style="font-size: 0.875rem; margin-right: 8px;"></span>
+            <button id="copy-links-btn" class="btn" disabled><i class="fas fa-link"></i> Copy Links</button>
+            <button id="batch-delete-btn" class="btn btn-danger" disabled><i class="fas fa-trash-alt"></i> Delete</button>
+        </div>
+    </div>
+
+    <!-- File List Table -->
+    <div class="file-list-container">
+        <div class="file-list-header">
+            <div class="col-checkbox"><input type="checkbox" id="select-all-checkbox"></div>
+            <div class="col-name">Name</div>
+            <div class="col-size">Size</div>
+            <div class="col-date">Date</div>
+            <div class="col-actions">Actions</div>
+        </div>
+        <div class="file-list" id="file-list-disk">
+            {% if files %}
+                {% for file in files %}
+                <div class="file-item" id="file-item-{{ file.file_id.replace(':', '-') }}" data-file-id="{{ file.file_id }}" data-file-url="/d/{{ file.file_id }}/{{ file.filename }}" data-filename="{{ file.filename }}">
+                    <div class="col-checkbox">
+                        <input type="checkbox" class="file-checkbox" data-file-id="{{ file.file_id }}">
+                    </div>
+                    <div class="col-name">
+                        <i class="fas fa-file-alt"></i>
+                        <span title="{{ file.filename }}">{{ file.filename }}</span>
+                    </div>
+                    <div class="col-size">{{ "%.2f" | format(file.filesize / (1024*1024)) }} MB</div>
+                    <div class="col-date">{{ file.upload_date.split(' ')[0] }}</div>
+                    <div class="col-actions">
+                        <a href="/d/{{ file.file_id }}/{{ file.filename }}" class="action-btn" data-tooltip="Download"><i class="fas fa-download"></i></a>
+                        <button class="action-btn copy-link-btn" data-tooltip="Copy Link" onclick="copyLink('/d/{{ file.file_id }}/{{ file.filename }}')"><i class="fas fa-link"></i></button>
+                        <button class="action-btn delete" data-tooltip="Delete" onclick="deleteFile('{{ file.file_id }}')"><i class="fas fa-trash-alt"></i></button>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div style="padding: 40px; text-align: center; color: var(--text-tertiary);">
+                    <i class="fas fa-folder-open" style="font-size: 48px; margin-bottom: 16px;"></i>
+                    <p>No files found</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+<script src="{{ url_for('static', path='/js/main.js') }}?v=3.0"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('nav-home')?.classList.add('active');
+});
+</script>
+{% endblock %}

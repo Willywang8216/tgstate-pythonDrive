@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Images - tgState{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Image Hosting</h1>
+    
+    <!-- Upload Area -->
+    <div class="upload-container">
+        <div class="upload-area-dashed" id="upload-area">
+            <i class="fas fa-image"></i>
+            <p>Drag images here or <span>Browse</span></p>
+            <input type="file" id="file-input" hidden multiple accept="image/*">
+        </div>
+        <div class="progress-area" id="progress-area"></div>
+        <div class="uploaded-area" id="uploaded-area"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls-bar">
+        <div class="search-container">
+            <i class="fas fa-search search-icon"></i>
+            <input type="text" id="file-search" placeholder="Search images..." class="search-input">
+        </div>
+        
+        <div class="batch-actions">
+             <div class="link-format-selector" style="display: flex; gap: 8px; margin-right: 16px;">
+                <button class="btn active format-option" data-format="url">URL</button>
+                <button class="btn format-option" data-format="markdown">MD</button>
+                <button class="btn format-option" data-format="html">HTML</button>
+            </div>
+            <button id="copy-links-btn" class="btn" disabled><i class="fas fa-copy"></i> Copy</button>
+            <button id="batch-delete-btn" class="btn btn-danger" disabled><i class="fas fa-trash-alt"></i></button>
+        </div>
+    </div>
+
+    <!-- Image Grid -->
+    <div class="file-list-container"> <!-- Reuse container for selection logic -->
+        <!-- Hidden select all for logic compatibility -->
+        <input type="checkbox" id="select-all-checkbox" style="display:none;">
+        
+        <div class="image-grid" id="file-list-disk">
+            {% if files %}
+                {% for file in files %}
+                <div class="image-card file-item-disk" id="file-item-{{ file.file_id.replace(':', '-') }}" data-file-id="{{ file.file_id }}" data-file-url="/d/{{ file.file_id }}/{{ file.filename }}" data-filename="{{ file.filename }}">
+                    <div class="image-thumb-wrapper">
+                         <!-- In a real app, we'd have a thumbnail endpoint. Using direct link for now -->
+                        <img src="/d/{{ file.file_id }}/{{ file.filename }}" loading="lazy" class="image-thumb" alt="{{ file.filename }}">
+                         <div style="position: absolute; top: 8px; left: 8px;">
+                            <input type="checkbox" class="file-checkbox" data-file-id="{{ file.file_id }}">
+                        </div>
+                    </div>
+                    <div class="image-info">
+                        <div class="image-name" title="{{ file.filename }}">{{ file.filename }}</div>
+                        <div class="image-meta">{{ "%.2f" | format(file.filesize / (1024*1024)) }} MB</div>
+                    </div>
+                    <div class="image-actions">
+                        <button class="action-btn copy-link-btn" data-tooltip="Copy" onclick="copyLink('/d/{{ file.file_id }}/{{ file.filename }}')"><i class="fas fa-link"></i></button>
+                        <button class="action-btn delete" data-tooltip="Delete" onclick="deleteFile('{{ file.file_id }}')"><i class="fas fa-trash-alt"></i></button>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                 <div style="grid-column: 1/-1; padding: 40px; text-align: center; color: var(--text-tertiary);">
+                    <i class="fas fa-images" style="font-size: 48px; margin-bottom: 16px;"></i>
+                    <p>No images found</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', path='/js/main.js') }}?v=3.0"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('nav-image-hosting')?.classList.add('active');
+});
+</script>
+{% endblock %}

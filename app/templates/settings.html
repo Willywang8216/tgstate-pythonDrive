@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - tgState{% endblock %}
+
+{% block content %}
+<div class="container settings-page-container">
+    <h1>Setup</h1>
+    <p class="subtitle">首次启动请先完成配置，保存后立即生效。</p>
+
+    <div class="settings-card">
+        <form id="setup-form" class="settings-form">
+            <div class="form-group">
+                <label for="bot_token">BOT_TOKEN</label>
+                <div class="input-wrapper">
+                    <input type="password" id="bot_token" name="bot_token" placeholder="123456:ABC..." autocomplete="off">
+                </div>
+                <div class="text-muted" id="bot_token_hint" style="margin-top: 6px;"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="channel_name">CHANNEL_NAME</label>
+                <div class="input-wrapper">
+                    <input type="text" id="channel_name" name="channel_name" placeholder="@channel 或 -100...">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="pass_word">PASS_WORD</label>
+                <div class="input-wrapper">
+                    <input type="password" id="pass_word" name="pass_word" placeholder="用于登录 Web 的密码" autocomplete="new-password">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="base_url">BASE_URL</label>
+                <div class="input-wrapper">
+                    <input type="text" id="base_url" name="base_url" placeholder="http://127.0.0.1:8000">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="picgo_api_key">PICGO_API_KEY (可选)</label>
+                <div class="input-wrapper">
+                    <input type="password" id="picgo_api_key" name="picgo_api_key" placeholder="PicGo/API 上传密钥（可留空）" autocomplete="off">
+                </div>
+                <div class="text-muted" id="picgo_hint" style="margin-top: 6px;"></div>
+            </div>
+
+            <div style="display:flex; gap: 10px; align-items:center; flex-wrap: wrap;">
+                <button type="submit" class="btn-submit">保存并启用</button>
+                <button type="button" id="reset-btn" class="btn btn-danger">重置配置</button>
+                <span id="status" class="text-muted"></span>
+            </div>
+        </form>
+
+        <p id="message" class="message"></p>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    document.getElementById('nav-settings')?.classList.add('active');
+
+    const form = document.getElementById('setup-form');
+    const messageEl = document.getElementById('message');
+    const statusEl = document.getElementById('status');
+    const resetBtn = document.getElementById('reset-btn');
+
+    const botTokenHint = document.getElementById('bot_token_hint');
+    const picgoHint = document.getElementById('picgo_hint');
+
+    async function loadConfig() {
+        try {
+            const res = await fetch('/api/app-config');
+            const json = await res.json();
+            if (!res.ok) return;
+            const data = json.data || {};
+            document.getElementById('channel_name').value = data.CHANNEL_NAME || '';
+            document.getElementById('base_url').value = data.BASE_URL || 'http://127.0.0.1:8000';
+
+            botTokenHint.textContent = data.BOT_TOKEN_SET ? '已设置（如需更新请重新填写）' : '未设置';
+            picgoHint.textContent = data.PICGO_API_KEY_SET ? '已设置（如需更新请重新填写）' : '未设置';
+            statusEl.textContent = json.setup_required ? '当前：需要完成设置' : (json.bot_running ? '当前：已启用（Bot 运行中）' : '当前：已启用');
+        } catch (e) {}
+    }
+
+    await loadConfig();
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        messageEl.textContent = '';
+        messageEl.className = 'message';
+        statusEl.textContent = '保存中...';
+
+        const payload = {
+            BOT_TOKEN: document.getElementById('bot_token').value,
+            CHANNEL_NAME: document.getElementById('channel_name').value,
+            PASS_WORD: document.getElementById('pass_word').value,
+            BASE_URL: document.getElementById('base_url').value,
+            PICGO_API_KEY: document.getElementById('picgo_api_key').value || null,
+        };
+
+        try {
+            const res = await fetch('/api/app-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const json = await res.json();
+            if (res.ok) {
+                messageEl.textContent = '✓ 配置已保存并生效';
+                messageEl.className = 'message success';
+                document.getElementById('bot_token').value = '';
+                document.getElementById('picgo_api_key').value = '';
+                document.getElementById('pass_word').value = '';
+                await loadConfig();
+            } else {
+                const msg = json?.detail?.message || json?.detail || json?.message || '未知错误';
+                messageEl.textContent = '✗ ' + msg;
+                messageEl.className = 'message error';
+                statusEl.textContent = '';
+            }
+        } catch (e) {
+            messageEl.textContent = '✗ 请求失败: ' + e.message;
+            messageEl.className = 'message error';
+            statusEl.textContent = '';
+        }
+    });
+
+    resetBtn.addEventListener('click', async () => {
+        if (!confirm('确定要重置配置吗？重置后系统会回到 Setup 状态。')) return;
+        messageEl.textContent = '';
+        messageEl.className = 'message';
+        statusEl.textContent = '重置中...';
+        try {
+            const res = await fetch('/api/reset-config', { method: 'POST' });
+            const json = await res.json();
+            if (res.ok) {
+                messageEl.textContent = '✓ ' + (json.message || '已重置');
+                messageEl.className = 'message success';
+                document.getElementById('bot_token').value = '';
+                document.getElementById('pass_word').value = '';
+                document.getElementById('channel_name').value = '';
+                document.getElementById('picgo_api_key').value = '';
+                document.getElementById('base_url').value = 'http://127.0.0.1:8000';
+                await loadConfig();
+            } else {
+                const msg = json?.detail?.message || json?.detail || json?.message || '未知错误';
+                messageEl.textContent = '✗ ' + msg;
+                messageEl.className = 'message error';
+                statusEl.textContent = '';
+            }
+        } catch (e) {
+            messageEl.textContent = '✗ 请求失败: ' + e.message;
+            messageEl.className = 'message error';
+            statusEl.textContent = '';
+        }
+    });
+});
+</script>
+{% endblock %}
