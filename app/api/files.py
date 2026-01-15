@@ -151,11 +151,15 @@ async def delete_file(
         was_deleted_from_db = database.delete_file_metadata(file_id)
         delete_result["db_status"] = "deleted" if was_deleted_from_db else "not_found_in_db"
     else:
-        delete_result["db_status"] = "skipped_due_to_tg_error"
+        # 即使 Telegram 删除失败（可能已手动删除），我们也尝试从 DB 删除，避免死数据
+        logger.warning(f"Telegram 删除报告失败 ({delete_result.get('error')})，但尝试强制清理 DB: {file_id}")
+        was_deleted_from_db = database.delete_file_metadata(file_id)
+        delete_result["db_status"] = "force_deleted" if was_deleted_from_db else "not_found_in_db"
 
-    if delete_result.get("status") == "success":
-        logger.info("删除成功: %s", file_id)
-        return {"status": "ok", "message": f"文件 {file_id} 已成功处理。", "details": delete_result}
+    # 只要 DB 删除了，或者 TG 删除了，我们都视为成功
+    if delete_result.get("status") == "success" or delete_result.get("db_status") in ("deleted", "force_deleted"):
+        logger.info("删除操作完成: %s", file_id)
+        return {"status": "ok", "message": f"文件 {file_id} 已删除。", "details": delete_result}
 
     if delete_result.get("status") == "partial_failure":
         logger.warning("删除部分失败: %s", file_id)

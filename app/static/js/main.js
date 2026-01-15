@@ -25,12 +25,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const fileId = item.dataset.fileId;
         const filename = item.dataset.filename;
         
+        // 优先使用 dataset 中的 fileUrl (如果存在且非空)
+        // 如果不存在 (如旧版渲染)，则 fallback 到构造
+        // 注意：dataset.fileUrl 可能是 undefined，如果 Jinja2 没渲染它
+        let url = item.dataset.fileUrl;
+        
+        if (!url || url === 'undefined') {
+             // Fallback construction
+             const id = (shortId && shortId !== 'None' && shortId !== '') ? shortId : fileId;
+             url = `/d/${id}`;
+        }
+        
+        // 确保是绝对路径
+        if (url.startsWith('/')) {
+            url = window.location.origin + url;
+        }
+
         if (window.copyLink) {
-            window.copyLink(shortId, fileId, filename);
+             // copyLink 内部也做了 fallback，但直接传完整 URL 更稳
+             Utils.copy(url);
         } else {
-            // Fallback if ui.js copyLink is missing
-            const url = item.dataset.fileUrl || (shortId ? `/d/${shortId}` : `/d/${fileId}/${encodeURIComponent(filename)}`);
-            Utils.copy(url);
+             Utils.copy(url);
         }
     });
 
@@ -56,8 +71,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Prevent double dialog by stopping propagation from input
         fileInput.addEventListener('click', (e) => e.stopPropagation());
 
-        uploadArea.addEventListener('click', () => {
-            fileInput.click();
+        uploadArea.addEventListener('click', (e) => {
+             // Only trigger if not clicking the input itself (though propagation stop handles it, this is extra safety)
+             if (e.target !== fileInput) {
+                 fileInput.click();
+             }
         });
 
         uploadArea.addEventListener('dragover', (event) => {
@@ -260,7 +278,20 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const links = Array.from(checked).map(cb => {
                 const item = cb.closest('.file-item, .image-card');
-                const url = window.location.origin + item.dataset.fileUrl;
+                let url = item.dataset.fileUrl;
+                
+                // Fallback for missing dataset
+                if (!url || url === 'undefined') {
+                    const shortId = item.dataset.shortId;
+                    const fileId = item.dataset.fileId;
+                    const id = (shortId && shortId !== 'None' && shortId !== '') ? shortId : fileId;
+                    url = `/d/${id}`;
+                }
+                
+                if (url.startsWith('/')) {
+                    url = window.location.origin + url;
+                }
+                
                 const name = item.dataset.filename;
 
                 if (format === 'markdown') return `![${name}](${url})`;

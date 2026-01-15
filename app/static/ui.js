@@ -257,6 +257,38 @@ const Auth = {
     }
 };
 
+// Theme System
+const Theme = {
+    init() {
+        const pref = localStorage.getItem('tgstate_theme_pref') || 'auto';
+        this.apply(pref);
+    },
+    
+    apply(mode) {
+        let theme = mode;
+        if (mode === 'auto') {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+        
+        // Update Toggle Button Text/Icon if needed (optional)
+        const label = document.querySelector('.theme-label');
+        if (label) {
+            label.textContent = mode === 'auto' ? '跟随系统' : (mode === 'dark' ? '深色模式' : '浅色模式');
+        }
+    },
+    
+    cycle() {
+        const current = localStorage.getItem('tgstate_theme_pref') || 'auto';
+        const next = current === 'auto' ? 'light' : (current === 'light' ? 'dark' : 'auto');
+        localStorage.setItem('tgstate_theme_pref', next);
+        this.apply(next);
+        
+        const modeNames = { 'auto': '跟随系统', 'light': '浅色模式', 'dark': '深色模式' };
+        Toast.show(`已切换到${modeNames[next]}`);
+    }
+};
+
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
     Theme.init();
