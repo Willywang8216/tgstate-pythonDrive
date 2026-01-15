@@ -1,10 +1,7 @@
-import time
 from fastapi import APIRouter, Response, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from ..core.config import get_app_settings
-from ..core.security import verify_password, generate_session_id, get_session_expiry
-from .. import database
+from ..core.config import get_active_password
 
 router = APIRouter()
 
@@ -13,86 +10,34 @@ class LoginRequest(BaseModel):
 
 COOKIE_NAME = "tgstate_session"
 
-# Simple in-memory rate limiter
-# IP -> list of timestamps
-login_attempts = {}
-MAX_ATTEMPTS = 10
-TIME_WINDOW = 300  # 5 minutes
-
-def is_rate_limited(ip: str) -> bool:
-    now = time.time()
-    attempts = login_attempts.get(ip, [])
-    # Filter out old attempts
-    attempts = [t for t in attempts if now - t < TIME_WINDOW]
-    login_attempts[ip] = attempts
-    
-    if len(attempts) >= MAX_ATTEMPTS:
-        return True
-    return False
-
-def add_attempt(ip: str):
-    login_attempts.setdefault(ip, []).append(time.time())
-
 @router.post("/api/auth/login")
-async def login(payload: LoginRequest, request: Request):
-    client_ip = request.client.host if request.client else "unknown"
-    
-    if is_rate_limited(client_ip):
-        return JSONResponse(status_code=429, content={"status": "error", "message": "尝试次数过多，请稍后再试"})
-
-    settings = get_app_settings()
-    stored_hash = settings.get("PASS_HASH")
-    
-    # 兼容旧明文密码（虽然 init_db 应该已经迁移了，但为了稳健）
-    stored_plain = settings.get("PASS_WORD")
-    
+async def login(payload: LoginRequest, response: Response):
+    active_password = get_active_password()
+    # 确保密码比对时处理两端空格，避免复制粘贴带来的隐形字符问题
     input_pwd = payload.password.strip()
+    stored_pwd = (active_password or "").strip()
     
-    auth_success = False
-    
-    if stored_hash:
-        if verify_password(input_pwd, stored_hash):
-            auth_success = True
-    elif stored_plain:
-        # Fallback to plain text check (should not happen if migration worked)
-        if input_pwd == stored_plain.strip():
-            auth_success = True
-            
-    if auth_success:
-        # Create Session
-        session_id = generate_session_id()
-        expires_at = get_session_expiry(days=7)
-        ua = request.headers.get("user-agent", "unknown")
-        
-        database.create_session(session_id, expires_at, client_ip, ua)
-        
+    if input_pwd and input_pwd == stored_pwd:
+        # 登录成功，设置 Cookie
         response = JSONResponse(content={"status": "ok", "message": "登录成功"})
-        
-        # Determine secure flag
-        is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
-        
+        # 关键修复：设置 secure=False 以支持 http://IP:PORT 访问
+        # samesite="Lax" 允许在同一站点导航时发送 Cookie
         response.set_cookie(
             key=COOKIE_NAME,
-            value=session_id,
+            value=stored_pwd, # 保持与中间件一致，存储原密码值（或后续可升级为 Session Token）
             httponly=True,
             samesite="Lax",
             path="/",
-            secure=is_https,
-            max_age=7 * 24 * 60 * 60, # 7 days
-            expires=expires_at
+            secure=False # 兼容非 HTTPS 环境
         )
         return response
     else:
-        add_attempt(client_ip)
-        # Uniform error message
-        return JSONResponse(status_code=401, content={"status": "error", "message": "认证失败"})
+        return JSONResponse(status_code=401, content={"status": "error", "message": "密码错误"})
 
 @router.post("/api/auth/logout")
-async def logout(request: Request):
-    session_id = request.cookies.get(COOKIE_NAME)
-    if session_id:
-        database.delete_session(session_id)
-        
+async def logout():
+    # 登出，清除 Cookie
+    # 修复：不依赖 response 参数，而是直接返回一个新的 Response
     response = JSONResponse(content={"status": "ok", "message": "已退出登录"})
     response.delete_cookie(key=COOKIE_NAME, path="/", httponly=True, samesite="Lax")
     return response
