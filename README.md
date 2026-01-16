@@ -16,6 +16,8 @@ curl -fsSL https://raw.githubusercontent.com/buyi06/tgstate-python/main/scripts/
 curl -fsSL https://raw.githubusercontent.com/buyi06/tgstate-python/main/scripts/purge.sh | bash
 ```
 
+> **注意**：`reset.sh` 默认仅重置容器（保留数据）。若需彻底清空数据，请使用 `RESET_WIPE=1` 环境变量运行，或参考下方的“彻底重装”命令。
+
 环境变量一键部署示例：
 
 ```bash
