@@ -8,17 +8,17 @@
 
 ## 一键脚本（推荐）
 
-### 1) 一键安装 / 一键更新（保留数据，推荐）
+### 1. 一键安装 / 一键更新（保留数据，推荐）
 ```bash
 bash -lc 'bash <(curl -fsSL https://raw.githubusercontent.com/buyi06/tgstate-python/main/scripts/install.sh)'
 ```
 
-### 2) 一键重建容器（保留数据，专治容器跑飞）
+### 2. 一键重建容器（保留数据，专治容器跑飞）
 ```bash
 bash -lc 'bash <(curl -fsSL https://raw.githubusercontent.com/buyi06/tgstate-python/main/scripts/reset.sh)'
 ```
 
-### 3) 一键彻底清理（清空数据，不可逆）
+### 3. 一键彻底清理（清空数据，不可逆）
 ```bash
 bash -lc 'bash <(curl -fsSL https://raw.githubusercontent.com/buyi06/tgstate-python/main/scripts/purge.sh)'
 ```
