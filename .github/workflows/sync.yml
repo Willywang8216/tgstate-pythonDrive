@@ -1,0 +1,28 @@
+name: 3 day Sync with Upstream
+
+on:
+  schedule:
+    - cron: '0 0 */3 * *' # Runs every hour
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  sync_with_upstream:
+    runs-on: ubuntu-latest
+    name: Sync main with upstream latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout target branch
+        uses: actions/checkout@v3
+        with:
+          ref: main  # Replace with your default branch name (e.g., master)
+
+      # Step 2: Run the sync action
+      - name: Sync Upstream
+        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
+        with:
+          upstream_sync_repo: buyi06/tgstate-python # Replace with the original repo (e.g., facebook/react)
+          upstream_sync_branch: main # Replace with the original repo's branch
+          target_sync_branch: main   # Replace with your fork's branch
+          target_repo_token: ${{ secrets.GITHUB_TOKEN }} # Automatically generated token
+          test_mode: false
