@@ -25,14 +25,47 @@
     </div>
     {% else %}
     <!-- Upload Area -->
-    <div class="card" style="border-style: dashed; text-align: center; padding: 40px; cursor: pointer; transition: all 0.2s;" 
-         id="upload-zone">
+    <div
+        class="card"
+        style="border-style: dashed; text-align: center; padding: 40px; cursor: pointer; transition: all 0.2s;"
+        id="upload-zone"
+        data-channels="{{ cfg.channels | join(',') if cfg.channels }}"
+        data-primary-channel="{{ cfg.primary_channel or '' }}"
+    >
         <input type="file" id="file-picker" hidden multiple accept="image/*">
         <div style="color: var(--primary-color); margin-bottom: 12px;">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
         </div>
         <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 4px;">上传图片</h3>
         <p style="color: var(--text-secondary); font-size: 14px;">拖拽图片到此处或点击选择</p>
+        {% if cfg.channels %}
+        <div class="upload-channel-selector" style="margin-top: 16px; text-align: left;">
+            <label for="upload-channel-input" class="upload-channel-label" style="display: block; font-size: 13px; margin-bottom: 4px; color: var(--text-secondary);">
+                上传到频道 / 群组
+            </label>
+            <div class="upload-channel-combobox" style="position: relative;">
+                <input
+                    type="text"
+                    id="upload-channel-input"
+                    class="upload-channel-input"
+                    placeholder="输入以筛选频道，留空使用默认频道"
+                    autocomplete="off"
+                    style="width: 100%; padding: 6px 8px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);"
+                >
+                <div
+                    id="upload-channel-dropdown"
+                    class="upload-channel-dropdown hidden"
+                    style="position: absolute; z-index: 10; top: 100%; left: 0; right: 0; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-sm); margin-top: 4px; max-height: 180px; overflow-y: auto;"
+                ></div>
+            </div>
+            <p class="upload-channel-hint" style="margin-top: 4px; font-size: 12px; color: var(--text-secondary);">
+              默认频道：
+              <span class="upload-channel-default" style="color: var(--text-primary); font-weight: 500;">
+                {{ cfg.primary_channel or (cfg.channels[0] if cfg.channels) }}
+              </span>
+            </p>
+        </div>
+        {% endif %}
     </div>
     
     <!-- Progress Area -->

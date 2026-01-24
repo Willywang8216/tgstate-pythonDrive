@@ -5,6 +5,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressArea = document.getElementById('prog-zone');
     const doneArea = document.getElementById('done-zone');
     const searchInput = document.getElementById('file-search');
+
+    // Channel selection (for multi-channel uploads)
+    const channelInput = document.getElementById('upload-channel-input');
+    const channelDropdown = document.getElementById('upload-channel-dropdown');
+    let channelOptions = [];
+    let primaryChannel = '';
+
+    if (uploadArea) {
+        const dsChannels = uploadArea.dataset.channels || '';
+        primaryChannel = uploadArea.dataset.primaryChannel || '';
+        if (dsChannels) {
+            channelOptions = dsChannels.split(',').map(c => c.trim()).filter(Boolean);
+        }
+    }
     
     // --- Copy Link Delegation ---
     document.addEventListener('click', (e) => {
@@ -93,6 +107,52 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- Channel Combobox Logic ---
+    function renderChannelDropdown(filterText) {
+        if (!channelDropdown || channelOptions.length === 0) return;
+        const term = (filterText || '').toLowerCase();
+        const matched = channelOptions.filter(c => c.toLowerCase().includes(term));
+        if (matched.length === 0) {
+            channelDropdown.classList.add('hidden');
+            channelDropdown.innerHTML = '';
+            return;
+        }
+        channelDropdown.innerHTML = matched
+            .map(c => `<div class="channel-option" data-value="${c}">${c}</div>`)
+            .join('');
+        channelDropdown.classList.remove('hidden');
+    }
+
+    if (channelInput && channelDropdown) {
+        channelInput.addEventListener('focus', () => {
+            renderChannelDropdown(channelInput.value);
+        });
+
+        channelInput.addEventListener('input', () => {
+            renderChannelDropdown(channelInput.value);
+        });
+
+        channelDropdown.addEventListener('click', (e) => {
+            const optionEl = e.target.closest('.channel-option');
+            if (!optionEl) return;
+            const value = optionEl.dataset.value;
+            channelInput.value = value;
+            channelDropdown.classList.add('hidden');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (e.target === channelInput || (channelDropdown && channelDropdown.contains(e.target))) return;
+            if (channelDropdown) channelDropdown.classList.add('hidden');
+        });
+
+        channelInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (channelDropdown) channelDropdown.classList.add('hidden');
+                channelInput.blur();
+            }
+        });
+    }
+
     // --- Upload Logic ---
     if (uploadArea && fileInput) {
         // Prevent double dialog by stopping propagation from input
@@ -161,6 +221,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Promise((resolve) => {
             const formData = new FormData();
             formData.append('file', file, file.name);
+
+            // Optional: target channel for this upload
+            if (channelInput && channelInput.value.trim()) {
+                const raw = channelInput.value.trim();
+                if (channelOptions && channelOptions.length > 0) {
+                    const norm = raw.toLowerCase().replace(/^@/, '');
+                    const matched = channelOptions.find(c => c.toLowerCase().replace(/^@/, '') === norm);
+                    formData.append('channel_name', matched || raw);
+                } else {
+                    formData.append('channel_name', raw);
+                }
+            }
             
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/api/upload', true);

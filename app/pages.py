@@ -10,19 +10,30 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 
+from .core.channels import split_channel_config, get_primary_channel
+
+
 def _page_cfg(request: Request) -> dict:
     cfg = get_app_settings()
     bot_token = (cfg.get("BOT_TOKEN") or "").strip()
-    channel = (cfg.get("CHANNEL_NAME") or "").strip()
-    bot_ready = bool(bot_token and channel)
+    channel_raw = (cfg.get("CHANNEL_NAME") or "").strip()
+    channels = split_channel_config(channel_raw)
+    primary_channel = get_primary_channel(channel_raw)
+    bot_ready = bool(bot_token and channel_raw)
     missing = []
     if not bot_token:
         missing.append("BOT_TOKEN")
-    if not channel:
+    if not channel_raw:
         missing.append("CHANNEL_NAME")
 
     bot_running = bool(getattr(request.app.state, "bot_app", None))
-    return {"bot_ready": bot_ready, "bot_running": bot_running, "missing": missing}
+    return {
+        "bot_ready": bot_ready,
+        "bot_running": bot_running,
+        "missing": missing,
+        "channels": channels,
+        "primary_channel": primary_channel,
+    }
 
 
 @router.get("/welcome", response_class=HTMLResponse)
