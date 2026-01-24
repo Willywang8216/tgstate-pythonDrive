@@ -8,6 +8,7 @@ import telegram
 from telegram.request import HTTPXRequest
 
 from ..core.config import get_app_settings
+from ..core.channels import get_primary_channel
 from .. import database
 
 # Telegram Bot API 对通过 getFile 方法下载的文件有 20MB 的限制。
@@ -28,6 +29,8 @@ class TelegramService:
             write_timeout=300.0
         )
         self.bot = telegram.Bot(token=bot_token, request=request)
+        # 注意：这里的 channel_name 表示“当前操作的频道/群组”，
+        # 可以针对不同文件所在的频道创建多个 TelegramService 实例。
         self.channel_name = channel_name
 
     async def _upload_chunk(self, chunk_data: bytes, chunk_name: str) -> str | None:
@@ -108,10 +111,11 @@ class TelegramService:
                 composite_id = f"{message.message_id}:{message.document.file_id}"
                 short_id = database.add_file_metadata(
                     filename=original_filename,
-                    file_id=composite_id, # 我们存储复合ID
-                    filesize=total_size
+                    file_id=composite_id,  # 我们存储复合ID
+                    filesize=total_size,
+                    channel_name=self.channel_name,
                 )
-                return short_id # 返回 short_id
+                return short_id  # 返回 short_id
         except Exception as e:
             logger.error("上传清单文件时出错: %s", e)
         
@@ -165,10 +169,11 @@ class TelegramService:
                 composite_id = f"{message.message_id}:{message.document.file_id}"
                 short_id = database.add_file_metadata(
                     filename=file_name,
-                    file_id=composite_id, # 存储复合ID
-                    filesize=file_size
+                    file_id=composite_id,  # 存储复合ID
+                    filesize=file_size,
+                    channel_name=self.channel_name,
                 )
-                return short_id # 返回 short_id
+                return short_id  # 返回 short_id
         except Exception as e:
             logger.error("上传文件到 Telegram 时出错: %s", e)
         
@@ -220,7 +225,7 @@ class TelegramService:
 
     async def delete_message(self, message_id: int) -> tuple[bool, str]:
         """
-        从频道中删除指定 ID 的消息。
+        从当前频道/群组中删除指定 ID 的消息。
 
         参数:
             message_id: 要删除的消息的 ID。
@@ -425,13 +430,38 @@ class TelegramService:
         return files
 
 @lru_cache()
+def _get_telegram_service(bot_token: str, channel_name: str) -> TelegramService:
+    """
+    带缓存的底层工厂函数，根据 Bot Token 和频道/群组标识创建 TelegramService。
+    """
+    return TelegramService(bot_token=bot_token, channel_name=channel_name)
+
+
 def get_telegram_service() -> TelegramService:
     """
-    TelegramService 的缓存工厂函数。
+    获取“默认频道”的 TelegramService 实例。
+
+    默认频道从 CHANNEL_NAME 配置中取第一个值，例如:
+    CHANNEL_NAME=@ch1,-1002,123456 则默认频道为 @ch1。
     """
     settings = get_app_settings()
     bot_token = (settings.get("BOT_TOKEN") or "").strip()
-    channel_name = (settings.get("CHANNEL_NAME") or "").strip()
+    raw_channel = (settings.get("CHANNEL_NAME") or "").strip()
+    channel_name = get_primary_channel(raw_channel)
     if not bot_token or not channel_name:
         raise RuntimeError("Telegram 未配置完成")
-    return TelegramService(bot_token=bot_token, channel_name=channel_name)
+    return _get_telegram_service(bot_token=bot_token, channel_name=channel_name)
+
+
+def get_telegram_service_for_channel(channel_name: str) -> TelegramService:
+    """
+    根据指定的频道/群组标识获取 TelegramService。
+
+    这允许针对不同频道分别进行删除等操作。
+    """
+    settings = get_app_settings()
+    bot_token = (settings.get("BOT_TOKEN") or "").strip()
+    ch = (channel_name or "").strip()
+    if not bot_token or not ch:
+        raise RuntimeError("Telegram 未配置完成")
+    return _get_telegram_service(bot_token=bot_token, channel_name=ch)

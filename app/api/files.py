@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import logging
 from typing import List, Optional
@@ -12,7 +13,9 @@ from pydantic import BaseModel
 
 from .. import database
 from ..core.http_client import get_http_client
-from ..services.telegram_service import TelegramService, get_telegram_service
+from ..core.config import get_app_settings
+from ..core.channels import get_primary_channel
+from ..services.telegram_service import TelegramService, get_telegram_service, get_telegram_service_for_channel
 from .common import http_error
 
 
@@ -253,12 +256,32 @@ async def get_files_list():
 async def delete_file(
     file_id: str,
 ):
+    """
+    删除指定文件（包括其可能的分块）。
+    现在会优先根据数据库中的 channel_name 精确删除对应频道/群组中的消息，
+    以支持多频道/群组场景。
+    """
+    # 先从数据库中获取文件元数据，以确定所属频道
+    meta = database.get_file_by_id(file_id)
+    channel_name = None
+    if meta:
+        channel_name = (meta.get("channel_name") or "").strip()
+
+    # 如果数据库中没有记录，或者缺少 channel_name，尝试使用默认配置兜底
+    if not channel_name:
+        settings = get_app_settings()
+        raw_channel = (settings.get("CHANNEL_NAME") or "").strip()
+        channel_name = get_primary_channel(raw_channel)
+
+    if not channel_name:
+        raise http_error(404, "未找到文件所属频道信息，无法删除", code="channel_not_found")
+
     try:
-        telegram_service = get_telegram_service()
+        telegram_service = get_telegram_service_for_channel(channel_name)
     except Exception:
         raise http_error(503, "未配置 BOT_TOKEN/CHANNEL_NAME，删除不可用", code="cfg_missing")
 
-    logger.info("请求删除文件: %s", file_id)
+    logger.info("请求删除文件: %s (channel=%s)", file_id, channel_name)
     delete_result = await telegram_service.delete_file_with_chunks(file_id)
 
     if delete_result.get("main_message_deleted"):
@@ -266,7 +289,11 @@ async def delete_file(
         delete_result["db_status"] = "deleted" if was_deleted_from_db else "not_found_in_db"
     else:
         # 即使 Telegram 删除失败（可能已手动删除），我们也尝试从 DB 删除，避免死数据
-        logger.warning(f"Telegram 删除报告失败 ({delete_result.get('error')})，但尝试强制清理 DB: {file_id}")
+        logger.warning(
+            "Telegram 删除报告失败 (%s)，但尝试强制清理 DB: %s",
+            delete_result.get("error"),
+            file_id,
+        )
         was_deleted_from_db = database.delete_file_metadata(file_id)
         delete_result["db_status"] = "force_deleted" if was_deleted_from_db else "not_found_in_db"
 

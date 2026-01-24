@@ -37,13 +37,16 @@ def init_db() -> None:
                     file_id TEXT NOT NULL UNIQUE,
                     filesize INTEGER NOT NULL,
                     upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    short_id TEXT UNIQUE
+                    short_id TEXT UNIQUE,
+                    channel_name TEXT
                 );
             """)
             
-            # 检查 short_id 列是否存在，不存在则添加 (简单的 migration)
+            # 检查现有列信息，做简单 migration
             cursor.execute("PRAGMA table_info(files)")
             columns = [info[1] for info in cursor.fetchall()]
+
+            # 迁移: 补充 short_id 列
             if "short_id" not in columns:
                 logger.info("Migrating database: adding short_id column...")
                 try:
@@ -51,6 +54,28 @@ def init_db() -> None:
                     cursor.execute("ALTER TABLE files ADD COLUMN short_id TEXT")
                 except Exception as e:
                     logger.error("Migration warning: Failed to add short_id column: %s", e)
+
+            # 迁移: 补充 channel_name 列
+            if "channel_name" not in columns:
+                logger.info("Migrating database: adding channel_name column...")
+                try:
+                    cursor.execute("ALTER TABLE files ADD COLUMN channel_name TEXT")
+                except Exception as e:
+                    logger.error("Migration warning: Failed to add channel_name column: %s", e)
+                else:
+                    # 尝试将历史数据的 channel_name 用当前 app_settings 的 channel_name 兜底填充
+                    try:
+                        cursor.execute(
+                            """
+                            UPDATE files
+                            SET channel_name = (
+                                SELECT channel_name FROM app_settings WHERE id = 1
+                            )
+                            WHERE channel_name IS NULL OR channel_name = ''
+                            """
+                        )
+                    except Exception as e:  # pragma: no cover - 仅在迁移出错时记录
+                        logger.error("Migration warning: Failed to backfill channel_name: %s", e)
 
             # 确保唯一索引存在（幂等操作）
             try:
@@ -75,7 +100,7 @@ def init_db() -> None:
         finally:
             conn.close()
 
-def add_file_metadata(filename: str, file_id: str, filesize: int) -> str:
+def add_file_metadata(filename: str, file_id: str, filesize: int, channel_name: str | None = None) -> str:
     """
     向数据库中添加一个新的文件元数据记录。
     如果 file_id 已存在，则忽略。
@@ -85,21 +110,24 @@ def add_file_metadata(filename: str, file_id: str, filesize: int) -> str:
         conn = get_db_connection()
         try:
             cursor = conn.cursor()
+
+            # 归一化 channel_name，允许为 None
+            ch = (channel_name or "").strip() or None
             
             # 尝试生成唯一的 short_id
             for _ in range(5):
                 short_id = generate_short_id()
                 try:
                     cursor.execute(
-                        "INSERT INTO files (filename, file_id, filesize, short_id) VALUES (?, ?, ?, ?)",
-                        (filename, file_id, filesize, short_id)
+                        "INSERT INTO files (filename, file_id, filesize, short_id, channel_name) VALUES (?, ?, ?, ?, ?)",
+                        (filename, file_id, filesize, short_id, ch)
                     )
                     conn.commit()
-                    logger.info("已添加文件元数据: %s, short_id: %s", filename, short_id)
+                    logger.info("已添加文件元数据: %s, short_id: %s, channel: %s", filename, short_id, ch)
                     return short_id
                 except sqlite3.IntegrityError as e:
                     if "short_id" in str(e):
-                        continue # 冲突重试
+                        continue  # 冲突重试
                     # 可能是 file_id 冲突，如果是这样，查询现有的 short_id
                     cursor.execute("SELECT short_id FROM files WHERE file_id = ?", (file_id,))
                     row = cursor.fetchone()
@@ -125,7 +153,10 @@ def get_all_files() -> list[dict]:
         conn = get_db_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT filename, file_id, filesize, upload_date, short_id FROM files ORDER BY upload_date DESC")
+            cursor.execute(
+                "SELECT filename, file_id, filesize, upload_date, short_id, channel_name "
+                "FROM files ORDER BY upload_date DESC"
+            )
             files = []
             for row in cursor.fetchall():
                 d = dict(row)
@@ -143,7 +174,11 @@ def get_file_by_id(identifier: str) -> dict | None:
         try:
             cursor = conn.cursor()
             # 优先匹配 short_id，然后 file_id
-            cursor.execute("SELECT filename, filesize, upload_date, file_id, short_id FROM files WHERE short_id = ? OR file_id = ?", (identifier, identifier))
+            cursor.execute(
+                "SELECT filename, filesize, upload_date, file_id, short_id, channel_name "
+                "FROM files WHERE short_id = ? OR file_id = ?",
+                (identifier, identifier),
+            )
             result = cursor.fetchone()
             if result:
                 return {
@@ -151,7 +186,8 @@ def get_file_by_id(identifier: str) -> dict | None:
                     "filesize": result["filesize"],
                     "upload_date": result["upload_date"],
                     "file_id": result["file_id"],
-                    "short_id": result["short_id"]
+                    "short_id": result["short_id"],
+                    "channel_name": result["channel_name"],
                 }
             return None
         finally:

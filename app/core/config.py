@@ -45,7 +45,13 @@ def get_active_password() -> Optional[str]:
 def get_app_settings() -> dict:
     """
     获取当前生效的应用设置（数据库优先，环境变量兜底）。
-    返回字段: BOT_TOKEN, CHANNEL_NAME, PASS_WORD, PICGO_API_KEY, BASE_URL
+
+    返回字段:
+    - BOT_TOKEN
+    - CHANNEL_NAME (可以是单个标识，或多个以逗号分隔的频道/群组标识)
+    - PASS_WORD
+    - PICGO_API_KEY
+    - BASE_URL
     """
     env = get_settings()
     try:

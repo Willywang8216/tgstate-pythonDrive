@@ -15,7 +15,14 @@ logger = logging.getLogger(__name__)
 http_client: httpx.AsyncClient | None = None
 
 def _is_bot_ready(app_settings: dict) -> bool:
-    return bool((app_settings.get("BOT_TOKEN") or "").strip() and (app_settings.get("CHANNEL_NAME") or "").strip())
+    """
+    Bot 就绪的最低条件：
+    - 配置了 BOT_TOKEN
+    - 至少配置了一个频道/群组（CHANNEL_NAME 支持多个，以逗号分隔）
+    """
+    token = (app_settings.get("BOT_TOKEN") or "").strip()
+    channel_raw = (app_settings.get("CHANNEL_NAME") or "").strip()
+    return bool(token and channel_raw)
 
 async def _stop_bot(app: FastAPI) -> None:
     if hasattr(app.state, "bot_app") and app.state.bot_app:

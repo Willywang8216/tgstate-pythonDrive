@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from .common import http_error
 from .. import database
 from ..core.config import get_app_settings
+from ..core.channels import split_channel_config, validate_channel_config
 from ..core.http_client import apply_runtime_settings
 
 import telegram
@@ -35,9 +36,15 @@ def _validate_config(cfg: dict) -> None:
     if token and (":" not in token or len(token) < 20):
         raise http_error(400, "BOT_TOKEN 格式不正确", code="invalid_bot_token")
 
-    channel = (cfg.get("CHANNEL_NAME") or "").strip()
-    if channel and not (channel.startswith("@") or channel.startswith("-100")):
-        raise http_error(400, "CHANNEL_NAME 格式不正确（@username 或 -100...）", code="invalid_channel")
+    # CHANNEL_NAME 现在支持多个值，用逗号/分号分隔
+    raw_channel = (cfg.get("CHANNEL_NAME") or "").strip()
+    if raw_channel:
+        if not validate_channel_config(raw_channel):
+            raise http_error(
+                400,
+                "CHANNEL_NAME 格式不正确（支持多个，以逗号分隔；每项为 @username 或 数字 ID）",
+                code="invalid_channel",
+            )
 
     base_url = (cfg.get("BASE_URL") or "").strip()
     if base_url and not (base_url.startswith("http://") or base_url.startswith("https://")):
@@ -182,15 +189,22 @@ async def verify_bot(payload: VerifyRequest):
 @router.post("/api/verify/channel")
 async def verify_channel(payload: VerifyRequest):
     token = (payload.BOT_TOKEN or "").strip()
-    channel = (payload.CHANNEL_NAME or "").strip()
+    raw_channel = (payload.CHANNEL_NAME or "").strip()
 
-    if not token or not channel:
+    if not token or not raw_channel:
         settings = get_app_settings()
         token = token or (settings.get("BOT_TOKEN") or "").strip()
-        channel = channel or (settings.get("CHANNEL_NAME") or "").strip()
+        raw_channel = raw_channel or (settings.get("CHANNEL_NAME") or "").strip()
 
-    if not token or not channel:
+    if not token or not raw_channel:
         return {"status": "ok", "available": False, "message": "未提供 BOT_TOKEN 或 CHANNEL_NAME"}
+
+    # 解析出第一个频道/群组用于测试
+    channels = split_channel_config(raw_channel)
+    if not channels:
+        return {"status": "ok", "available": False, "message": "CHANNEL_NAME 配置为空"}
+
+    channel = channels[0]
 
     _validate_config({"BOT_TOKEN": token, "CHANNEL_NAME": channel})
     req = HTTPXRequest(connect_timeout=10.0, read_timeout=10.0, write_timeout=10.0)

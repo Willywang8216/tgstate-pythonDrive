@@ -9,6 +9,7 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from .services.telegram_service import get_telegram_service
 from . import database
 from .events import file_update_queue, build_file_event
+from .core.channels import split_channel_config
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ async def handle_new_file(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """
     处理新增的文件或照片，将其元数据存入数据库，并通过队列发送通知。
     在函数内部检查消息来源是否为授权的聊天（私聊、群组或频道）。
+    支持在配置中设置多个频道/群组（CHANNEL_NAME 用逗号分隔）。
     """
     settings = _get_bot_settings(context)
     message = update.message or update.channel_post
@@ -30,21 +32,35 @@ async def handle_new_file(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not message:
         return
 
-    # 2. 检查消息来源是否为指定的频道/群组
-    channel_identifier = settings.get("CHANNEL_NAME")
-    if not channel_identifier:
-        logger.error("CHANNEL_NAME 未在 .env 中设置，无法处理文件")
+    # 2. 检查消息来源是否为指定的频道/群组（支持多个）
+    raw_channel = settings.get("CHANNEL_NAME")
+    allowed_channels = split_channel_config(raw_channel)
+    if not allowed_channels:
+        logger.error("CHANNEL_NAME 未在配置中设置，无法处理文件")
         return
 
     chat = message.chat
+    chat_username = getattr(chat, "username", None)
+    chat_id_str = str(chat.id)
+
     is_allowed = False
-    # 检查是公开频道 (e.g., "@username") 还是私密频道 (e.g., "-100123456789")
-    if channel_identifier.startswith('@'):
-        if chat.username and chat.username == channel_identifier.lstrip('@'):
-            is_allowed = True
-    else:
-        if str(chat.id) == channel_identifier:
-            is_allowed = True
+    for identifier in allowed_channels:
+        if not identifier:
+            continue
+        identifier = identifier.strip()
+        if not identifier:
+            continue
+
+        if identifier.startswith("@"):
+            # 配置为 @username，chat.username 不包含前缀 @
+            if chat_username and chat_username == identifier.lstrip("@"):
+                is_allowed = True
+                break
+        else:
+            # 配置为数字 ID（包含负数）
+            if chat_id_str == identifier:
+                is_allowed = True
+                break
 
     if not is_allowed:
         return
@@ -62,6 +78,12 @@ async def handle_new_file(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # 为照片创建一个默认文件名
         file_name = f"photo_{message.message_id}.jpg"
 
+    # 构造用于存储的频道标识（带 @ 的用户名或数字 ID）
+    if chat_username:
+        channel_tag = f"@{chat_username}"
+    else:
+        channel_tag = chat_id_str
+
     # 4. 如果成功获取到文件或照片对象，则处理它
     if file_obj and file_name:
         if file_obj.file_size < (20 * 1024 * 1024) and not file_name.endswith(".manifest"):
@@ -71,7 +93,8 @@ async def handle_new_file(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             short_id = database.add_file_metadata(
                 filename=file_name,
                 file_id=composite_id,
-                filesize=file_obj.file_size
+                filesize=file_obj.file_size,
+                channel_name=channel_tag,
             )
             
             upload_date = message.date.astimezone(timezone.utc).isoformat()
@@ -82,6 +105,7 @@ async def handle_new_file(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 filesize=file_obj.file_size,
                 upload_date=upload_date,
                 short_id=short_id,
+                channel_name=channel_tag,
             )
             await file_update_queue.put(json.dumps(file_event))
 

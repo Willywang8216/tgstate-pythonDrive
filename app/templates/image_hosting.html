@@ -60,7 +60,7 @@
         <div class="file-list" id="file-list-disk" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px;">
             {% if files %}
                 {% for file in files %}
-                <div class="file-item image-card" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-body);" id="file-item-{{ file.file_id.replace(':', '-') }}" data-file-id="{{ file.file_id }}" data-file-url="/d/{{ file.short_id if file.short_id else file.file_id }}" data-filename="{{ file.filename }}" data-short-id="{{ file.short_id or '' }}">
+                <div class="file-item image-card" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-body);" id="file-item-{{ file.file_id.replace(':', '-') }}" data-file-id="{{ file.file_id }}" data-file-url="/d/{{ file.short_id if file.short_id else file.file_id }}" data-filename="{{ file.filename }}" data-short-id="{{ file.short_id or '' }}" data-channel-name="{{ file.channel_name or '' }}">
                     <div style="position: relative; aspect-ratio: 16/9; background: #000;">
                         <img src="/d/{{ file.short_id if file.short_id else file.file_id }}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain;" alt="{{ file.filename }}">
                         <div style="position: absolute; top: 8px; left: 8px;">
@@ -69,7 +69,8 @@
                     </div>
                     <div style="padding: 12px;">
                         <div class="text-sm font-medium" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;" title="{{ file.filename }}">{{ file.filename }}</div>
-                        <div class="text-sm text-muted" style="margin-bottom: 12px;">{{ "%.2f" | format(file.filesize / (1024*1024)) }} MB</div>
+                        <div class="text-sm text-muted" style="margin-bottom: 4px;">{{ "%.2f" | format(file.filesize / (1024*1024)) }} MB</div>
+                        <div class="text-sm text-muted" style="margin-bottom: 8px;">{{ file.channel_name or '-' }}</div>
                         <div style="display: flex; gap: 8px;">
                             <button class="btn btn-secondary btn-sm copy-link-btn" style="flex: 1; height: 32px;">复制</button>
                             <button class="btn btn-secondary btn-sm delete" style="height: 32px; color: var(--danger-color);" onclick="deleteFile('{{ file.file_id }}')">

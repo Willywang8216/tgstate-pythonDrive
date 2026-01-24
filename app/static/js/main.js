@@ -83,7 +83,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const items = document.querySelectorAll('.file-item, .image-card');
             items.forEach(item => {
                 const name = (item.dataset.filename || '').toLowerCase();
-                if (name.includes(term)) {
+                const channel = (item.dataset.channelName || '').toLowerCase();
+                if (name.includes(term) || channel.includes(term)) {
                     item.style.display = ''; // Reset to default (grid or flex)
                 } else {
                     item.style.display = 'none';
@@ -430,6 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const formattedSize = (file.filesize / (1024 * 1024)).toFixed(2) + " MB";
         const formattedDate = formatDateValue(file.upload_date);
         const safeId = file.file_id.replace(':', '-');
+        const channelName = file.channel_name || '';
         
         // URL construction: Always use /d/{file_id} (short_id preferred)
         // 回滚：只使用 /d/{id} 格式，不再拼接文件名或 slug
@@ -438,7 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let html = '';
         if (isGridView) {
              html = `
-                <div class="file-item" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-body);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}">
+                <div class="file-item" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-body);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}" data-channel-name="${channelName}">
                     <div style="position: relative; aspect-ratio: 16/9; background: #000;">
                         <img src="${fileUrl}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain;" alt="${file.filename}">
                         <div style="position: absolute; top: 8px; left: 8px;">
@@ -447,7 +449,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div style="padding: 12px;">
                         <div class="text-sm font-medium" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;" title="${file.filename}">${file.filename}</div>
-                        <div class="text-sm text-muted" style="margin-bottom: 12px;">${formattedSize}</div>
+                        <div class="text-sm text-muted" style="margin-bottom: 4px;">${formattedSize}</div>
+                        <div class="text-sm text-muted" style="margin-bottom: 8px;">${channelName || '-'}</div>
                         <div style="display: flex; gap: 8px;">
                             <button class="btn btn-secondary btn-sm copy-link-btn" style="flex: 1; height: 32px;">复制</button>
                             <button class="btn btn-secondary btn-sm delete" style="height: 32px; color: var(--danger-color);" onclick="deleteFile('${file.file_id}')">
@@ -458,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
         } else {
             html = `
-                <tr class="file-item" style="border-bottom: 1px solid var(--border-color);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}">
+                <tr class="file-item" style="border-bottom: 1px solid var(--border-color);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}" data-channel-name="${channelName}">
                     <td style="padding: 12px 16px;"><input type="checkbox" class="file-checkbox" data-file-id="${file.file_id}"></td>
                     <td style="padding: 12px 16px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -466,6 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="text-sm font-medium" style="color: var(--text-primary);">${file.filename}</span>
                         </div>
                     </td>
+                    <td style="padding: 12px 16px;" class="text-sm text-muted">${channelName || '-'}</td>
                     <td style="padding: 12px 16px;" class="text-sm text-muted">${formattedSize}</td>
                     <td style="padding: 12px 16px;" class="text-sm text-muted">${formattedDate}</td>
                     <td style="padding: 12px 16px; text-align: right;">
