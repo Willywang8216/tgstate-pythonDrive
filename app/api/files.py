@@ -314,6 +314,33 @@ class BatchDeleteRequest(BaseModel):
     file_ids: List[str]
 
 
+class TagUpdateRequest(BaseModel):
+    tags: List[str]
+
+
+@router.post("/api/files/{file_id}/tags")
+async def update_file_tags(file_id: str, payload: TagUpdateRequest):
+    """
+    更新指定文件的标签（多选，可组合过滤使用）。
+    """
+    normalized: List[str] = []
+    seen: set[str] = set()
+    for tag in payload.tags:
+        t = (tag or "").strip()
+        if not t:
+            continue
+        if t in seen:
+            continue
+        seen.add(t)
+        normalized.append(t)
+
+    ok = database.update_file_tags(file_id, normalized)
+    if not ok:
+        raise http_error(404, "文件不存在", code="file_not_found")
+
+    return {"status": "ok", "tags": normalized}
+
+
 @router.post("/api/batch_delete")
 async def batch_delete_files(
     request_data: BatchDeleteRequest,

@@ -49,6 +49,7 @@ def build_file_event(
     upload_date: str | None = None,
     short_id: str | None = None,
     channel_name: str | None = None,
+    tags: str | None = None,
 ) -> dict:
     return {
         "action": action,
@@ -58,4 +59,5 @@ def build_file_event(
         "upload_date": upload_date,
         "short_id": short_id,
         "channel_name": channel_name,
+        "tags": tags,
     }

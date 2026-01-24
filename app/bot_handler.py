@@ -106,6 +106,7 @@ async def handle_new_file(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 upload_date=upload_date,
                 short_id=short_id,
                 channel_name=channel_tag,
+                tags=None,
             )
             await file_update_queue.put(json.dumps(file_event))
 

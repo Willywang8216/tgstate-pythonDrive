@@ -38,7 +38,8 @@ def init_db() -> None:
                     filesize INTEGER NOT NULL,
                     upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     short_id TEXT UNIQUE,
-                    channel_name TEXT
+                    channel_name TEXT,
+                    tags TEXT
                 );
             """)
             
@@ -77,6 +78,14 @@ def init_db() -> None:
                     except Exception as e:  # pragma: no cover - 仅在迁移出错时记录
                         logger.error("Migration warning: Failed to backfill channel_name: %s", e)
 
+            # 迁移: 补充 tags 列
+            if "tags" not in columns:
+                logger.info("Migrating database: adding tags column...")
+                try:
+                    cursor.execute("ALTER TABLE files ADD COLUMN tags TEXT")
+                except Exception as e:
+                    logger.error("Migration warning: Failed to add tags column: %s", e)
+
             # 确保唯一索引存在（幂等操作）
             try:
                 cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_files_short_id ON files(short_id)")
@@ -113,14 +122,15 @@ def add_file_metadata(filename: str, file_id: str, filesize: int, channel_name: 
 
             # 归一化 channel_name，允许为 None
             ch = (channel_name or "").strip() or None
+            tags = None  # 初始无标签
             
             # 尝试生成唯一的 short_id
             for _ in range(5):
                 short_id = generate_short_id()
                 try:
                     cursor.execute(
-                        "INSERT INTO files (filename, file_id, filesize, short_id, channel_name) VALUES (?, ?, ?, ?, ?)",
-                        (filename, file_id, filesize, short_id, ch)
+                        "INSERT INTO files (filename, file_id, filesize, short_id, channel_name, tags) VALUES (?, ?, ?, ?, ?, ?)",
+                        (filename, file_id, filesize, short_id, ch, tags)
                     )
                     conn.commit()
                     logger.info("已添加文件元数据: %s, short_id: %s, channel: %s", filename, short_id, ch)
@@ -154,14 +164,12 @@ def get_all_files() -> list[dict]:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT filename, file_id, filesize, upload_date, short_id, channel_name "
+                "SELECT filename, file_id, filesize, upload_date, short_id, channel_name, tags "
                 "FROM files ORDER BY upload_date DESC"
             )
             files = []
             for row in cursor.fetchall():
                 d = dict(row)
-                # 兼容旧数据，如果没有 short_id，这里不做处理，显示时前端可能需要 fallback
-                # 但最好是迁移时补全，这里先返回
                 files.append(d)
             return files
         finally:
@@ -175,7 +183,7 @@ def get_file_by_id(identifier: str) -> dict | None:
             cursor = conn.cursor()
             # 优先匹配 short_id，然后 file_id
             cursor.execute(
-                "SELECT filename, filesize, upload_date, file_id, short_id, channel_name "
+                "SELECT filename, filesize, upload_date, file_id, short_id, channel_name, tags "
                 "FROM files WHERE short_id = ? OR file_id = ?",
                 (identifier, identifier),
             )
@@ -188,6 +196,7 @@ def get_file_by_id(identifier: str) -> dict | None:
                     "file_id": result["file_id"],
                     "short_id": result["short_id"],
                     "channel_name": result["channel_name"],
+                    "tags": result["tags"],
                 }
             return None
         finally:
@@ -284,6 +293,41 @@ def save_app_settings_to_db(payload: dict) -> None:
             conn.commit()
         finally:
             conn.close()
+
+def update_file_tags(file_id: str, tags: list[str] | None) -> bool:
+    """
+    更新指定文件的标签（以逗号分隔存储在 tags 字段中）。
+    返回: 是否更新到至少一行。
+    """
+    tags_str = None
+    if tags:
+        # 去重 + 去空白
+        cleaned = []
+        seen = set()
+        for t in tags:
+            s = (t or "").strip()
+            if not s:
+                continue
+            if s in seen:
+                continue
+            seen.add(s)
+            cleaned.append(s)
+        if cleaned:
+            tags_str = ",".join(cleaned)
+
+    with db_lock:
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE files SET tags = ? WHERE file_id = ?",
+                (tags_str, file_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
 
 def reset_app_settings_in_db() -> None:
     """重置应用设置（清空配置）。"""

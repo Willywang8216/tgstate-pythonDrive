@@ -19,10 +19,93 @@ document.addEventListener('DOMContentLoaded', () => {
             channelOptions = dsChannels.split(',').map(c => c.trim()).filter(Boolean);
         }
     }
+
+    // Advanced filter controls
+    const toggleFiltersBtn = document.getElementById('toggle-filters-btn');
+    const filtersPanel = document.getElementById('filters-panel');
+    const filterDateFrom = document.getElementById('filter-date-from');
+    const filterDateTo = document.getElementById('filter-date-to');
+    const filterSizeMin = document.getElementById('filter-size-min');
+    const filterSizeMax = document.getElementById('filter-size-max');
+    const filterTypes = document.querySelectorAll('.filter-type');
+    const filterSourcesContainer = document.getElementById('filter-sources');
+    const filterTagsContainer = document.getElementById('filter-tags');
+
+    const filterState = {
+        search: '',
+        dateFrom: null,
+        dateTo: null,
+        sizeMin: null,
+        sizeMax: null,
+        types: new Set(),
+        sources: new Set(),
+        tags: new Set(),
+    };
     
-    // --- Copy Link Delegation ---
+    // --- Copy Link Delegation & Tag Editing ---
     document.addEventListener('click', (e) => {
         const btn = e.target.closest('.copy-link-btn');
+        const tagBtn = e.target.closest('.edit-tags-btn');
+
+        if (tagBtn) {
+            const item = tagBtn.closest('.file-item, .image-card');
+            if (!item) return;
+            const fileId = item.dataset.fileId;
+            if (!fileId) return;
+
+            const current = item.dataset.tags || '';
+            const input = window.prompt('输入标签（以逗号分隔）', current);
+            if (input === null) return;
+
+            const tags = input
+                .split(',')
+                .map(t => t.trim())
+                .filter(t => t.length > 0);
+
+            fetch(`/api/files/${encodeURIComponent(fileId)}/tags`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tags }),
+            })
+                .then(async (res) => {
+                    const data = await res.json().catch(() => ({}));
+                    return { ok: res.ok, data };
+                })
+                .then(({ ok, data }) => {
+                    if (!ok || data.status !== 'ok') {
+                        const msg = data?.message || data?.detail?.message || '更新标签失败';
+                        if (window.Toast) Toast.show(msg, 'error');
+                        return;
+                    }
+                    const tagStr = (data.tags || []).join(',');
+                    item.dataset.tags = tagStr;
+
+                    // 更新标签显示
+                    const display = item.querySelector('.file-tags-display');
+                    if (display) {
+                        if (!tagStr) {
+                            display.textContent = '-';
+                        } else {
+                            const parts = tagStr.split(',').map(t => t.trim()).filter(Boolean);
+                            display.innerHTML = parts
+                                .map(t => `<span class="tag-chip" style="display:inline-block;padding:2px 6px;margin:0 4px 4px 0;border-radius:999px;background:var(--bg-surface-hover);font-size:11px;color:var(--text-secondary);">${t}</span>`)
+                                .join('');
+                        }
+                    }
+
+                    // 重新构建过滤选项并应用过滤
+                    rebuildFilterOptionsFromItems();
+                    applyFilters();
+
+                    if (window.Toast) Toast.show('标签已更新');
+                })
+                .catch(() => {
+                    if (window.Toast) Toast.show('更新标签失败', 'error');
+                });
+
+            return;
+        }
+
         if (!btn) return;
         
         // Prevent default if it's a link (though it's a button)
@@ -89,23 +172,207 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- Helper: type categorization ---
+    function getFileCategory(filename) {
+        if (!filename) return 'other';
+        const name = filename.toLowerCase();
+        const ext = name.includes('.') ? name.split('.').pop() : '';
+
+        const imageExt = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico'];
+        const videoExt = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'flv'];
+        const audioExt = ['mp3', 'aac', 'ogg', 'wav', 'flac', 'm4a'];
+        const docExt = ['pdf', 'txt', 'md', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+        const archiveExt = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'];
+
+        if (imageExt.includes(ext)) return 'image';
+        if (videoExt.includes(ext)) return 'video';
+        if (audioExt.includes(ext)) return 'audio';
+        if (docExt.includes(ext)) return 'document';
+        if (archiveExt.includes(ext)) return 'archive';
+        return 'other';
+    }
+
+    // --- Filters Application ---
+    function applyFilters() {
+        const items = document.querySelectorAll('.file-item, .image-card');
+
+        items.forEach(item => {
+            const name = (item.dataset.filename || '').toLowerCase();
+            const channel = (item.dataset.channelName || '').toLowerCase();
+            const tagsStr = item.dataset.tags || '';
+            const tagsArr = tagsStr ? tagsStr.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+            const sizeBytes = parseInt(item.dataset.filesize || '0', 10) || 0;
+            const uploadDateRaw = item.dataset.uploadDate || '';
+            const category = getFileCategory(item.dataset.filename || '');
+
+            let visible = true;
+
+            // Text search: name / channel / tags
+            if (filterState.search) {
+                const term = filterState.search;
+                const inName = name.includes(term);
+                const inChannel = channel.includes(term);
+                const inTags = tagsArr.some(t => t.includes(term));
+                if (!inName && !inChannel && !inTags) visible = false;
+            }
+
+            // Date range (based on YYYY-MM-DD)
+            if (visible && (filterState.dateFrom || filterState.dateTo) && uploadDateRaw) {
+                const dStr = uploadDateRaw.split(' ')[0].split('T')[0];
+                const d = dStr;
+                if (filterState.dateFrom && d < filterState.dateFrom) visible = false;
+                if (filterState.dateTo && d > filterState.dateTo) visible = false;
+            }
+
+            // Size range (MB)
+            if (visible && (filterState.sizeMin != null || filterState.sizeMax != null) && sizeBytes > 0) {
+                const sizeMB = sizeBytes / (1024 * 1024);
+                if (filterState.sizeMin != null && sizeMB < filterState.sizeMin) visible = false;
+                if (filterState.sizeMax != null && sizeMB > filterState.sizeMax) visible = false;
+            }
+
+            // Type filter
+            if (visible && filterState.types.size > 0) {
+                if (!filterState.types.has(category)) visible = false;
+            }
+
+            // Source filter
+            if (visible && filterState.sources.size > 0) {
+                const rawChannel = (item.dataset.channelName || '').trim();
+                if (!filterState.sources.has(rawChannel)) visible = false;
+            }
+
+            // Tags filter (multi-select)
+            if (visible && filterState.tags.size > 0) {
+                const hasAnyTag = tagsArr.some(t => filterState.tags.has(t));
+                if (!hasAnyTag) visible = false;
+            }
+
+            item.style.display = visible ? '' : 'none';
+        });
+    }
+
+    function rebuildFilterOptionsFromItems() {
+        const items = document.querySelectorAll('.file-item, .image-card');
+        const sourcesSet = new Set();
+        const tagsSet = new Set();
+
+        items.forEach(item => {
+            const ch = (item.dataset.channelName || '').trim();
+            if (ch) sourcesSet.add(ch);
+
+            const tagsStr = item.dataset.tags || '';
+            if (tagsStr) {
+                tagsStr.split(',').forEach(raw => {
+                    const t = (raw || '').trim();
+                    if (t) tagsSet.add(t);
+                });
+            }
+        });
+
+        if (filterSourcesContainer) {
+            filterSourcesContainer.innerHTML = '';
+            Array.from(sourcesSet).sort().forEach(src => {
+                const id = `filter-src-${src.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+                const label = document.createElement('label');
+                label.style.fontSize = '12px';
+                label.innerHTML = `<input type="checkbox" class="filter-source" id="${id}" value="${src}"> ${src}`;
+                filterSourcesContainer.appendChild(label);
+            });
+
+            filterSourcesContainer.querySelectorAll('.filter-source').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    if (cb.checked) {
+                        filterState.sources.add(cb.value);
+                    } else {
+                        filterState.sources.delete(cb.value);
+                    }
+                    applyFilters();
+                });
+            });
+        }
+
+        if (filterTagsContainer) {
+            filterTagsContainer.innerHTML = '';
+            Array.from(tagsSet).sort().forEach(tag => {
+                const id = `filter-tag-${tag.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+                const label = document.createElement('label');
+                label.style.fontSize = '12px';
+                label.innerHTML = `<input type="checkbox" class="filter-tag" id="${id}" value="${tag.toLowerCase()}"> ${tag}`;
+                filterTagsContainer.appendChild(label);
+            });
+
+            filterTagsContainer.querySelectorAll('.filter-tag').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const v = cb.value;
+                    if (cb.checked) {
+                        filterState.tags.add(v);
+                    } else {
+                        filterState.tags.delete(v);
+                    }
+                    applyFilters();
+                });
+            });
+        }
+    }
+
     // --- Search Functionality ---
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
-            const term = e.target.value.toLowerCase();
-            // Select both file list items and image grid cards
-            const items = document.querySelectorAll('.file-item, .image-card');
-            items.forEach(item => {
-                const name = (item.dataset.filename || '').toLowerCase();
-                const channel = (item.dataset.channelName || '').toLowerCase();
-                if (name.includes(term) || channel.includes(term)) {
-                    item.style.display = ''; // Reset to default (grid or flex)
+            filterState.search = (e.target.value || '').toLowerCase();
+            applyFilters();
+        });
+    }
+
+    // --- Filters UI Logic ---
+    if (toggleFiltersBtn && filtersPanel) {
+        toggleFiltersBtn.addEventListener('click', () => {
+            filtersPanel.classList.toggle('hidden');
+        });
+    }
+
+    if (filterDateFrom) {
+        filterDateFrom.addEventListener('change', () => {
+            filterState.dateFrom = filterDateFrom.value || null;
+            applyFilters();
+        });
+    }
+    if (filterDateTo) {
+        filterDateTo.addEventListener('change', () => {
+            filterState.dateTo = filterDateTo.value || null;
+            applyFilters();
+        });
+    }
+    if (filterSizeMin) {
+        filterSizeMin.addEventListener('change', () => {
+            const v = filterSizeMin.value;
+            filterState.sizeMin = v === '' ? null : Number(v);
+            applyFilters();
+        });
+    }
+    if (filterSizeMax) {
+        filterSizeMax.addEventListener('change', () => {
+            const v = filterSizeMax.value;
+            filterState.sizeMax = v === '' ? null : Number(v);
+            applyFilters();
+        });
+    }
+    if (filterTypes) {
+        filterTypes.forEach(cb => {
+            cb.addEventListener('change', () => {
+                const v = cb.value;
+                if (cb.checked) {
+                    filterState.types.add(v);
                 } else {
-                    item.style.display = 'none';
+                    filterState.types.delete(v);
                 }
+                applyFilters();
             });
         });
     }
+
+    // 构建初始来源 / 标签选项
+    rebuildFilterOptionsFromItems();
 
     // --- Channel Combobox Logic ---
     function renderChannelDropdown(filterText) {
@@ -504,6 +771,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const formattedDate = formatDateValue(file.upload_date);
         const safeId = file.file_id.replace(':', '-');
         const channelName = file.channel_name || '';
+        const tagsStr = file.tags || '';
         
         // URL construction: Always use /d/{file_id} (short_id preferred)
         // 回滚：只使用 /d/{id} 格式，不再拼接文件名或 slug
@@ -512,7 +780,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let html = '';
         if (isGridView) {
              html = `
-                <div class="file-item" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-body);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}" data-channel-name="${channelName}">
+                <div class="file-item" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-body);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}" data-channel-name="${channelName}" data-filesize="${file.filesize}" data-upload-date="${file.upload_date || ''}" data-tags="${tagsStr}">
                     <div style="position: relative; aspect-ratio: 16/9; background: #000;">
                         <img src="${fileUrl}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain;" alt="${file.filename}">
                         <div style="position: absolute; top: 8px; left: 8px;">
@@ -522,9 +790,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div style="padding: 12px;">
                         <div class="text-sm font-medium" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;" title="${file.filename}">${file.filename}</div>
                         <div class="text-sm text-muted" style="margin-bottom: 4px;">${formattedSize}</div>
+                        <div class="text-sm text-muted file-tags-display" style="margin-bottom: 4px;">
+                            ${
+                                tagsStr
+                                    ? tagsStr
+                                        .split(',')
+                                        .map(t => t.trim())
+                                        .filter(Boolean)
+                                        .map(t => `<span class="tag-chip" style="display:inline-block;padding:2px 6px;margin:0 4px 4px 0;border-radius:999px;background:var(--bg-surface-hover);font-size:11px;color:var(--text-secondary);">${t}</span>`)
+                                        .join('')
+                                    : '-'
+                            }
+                        </div>
                         <div class="text-sm text-muted" style="margin-bottom: 8px;">${channelName || '-'}</div>
                         <div style="display: flex; gap: 8px;">
                             <button class="btn btn-secondary btn-sm copy-link-btn" style="flex: 1; height: 32px;">复制</button>
+                            <button class="btn btn-secondary btn-sm edit-tags-btn" style="height: 32px; font-size: 12px;">标记</button>
                             <button class="btn btn-secondary btn-sm delete" style="height: 32px; color: var(--danger-color);" onclick="deleteFile('${file.file_id}')">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                             </button>
@@ -533,7 +814,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
         } else {
             html = `
-                <tr class="file-item" style="border-bottom: 1px solid var(--border-color);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}" data-channel-name="${channelName}">
+                <tr class="file-item" style="border-bottom: 1px solid var(--border-color);" id="file-item-${safeId}" data-file-id="${file.file_id}" data-file-url="${fileUrl}" data-filename="${file.filename}" data-short-id="${file.short_id || ''}" data-channel-name="${channelName}" data-filesize="${file.filesize}" data-upload-date="${file.upload_date || ''}" data-tags="${tagsStr}">
                     <td style="padding: 12px 16px;"><input type="checkbox" class="file-checkbox" data-file-id="${file.file_id}"></td>
                     <td style="padding: 12px 16px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -542,6 +823,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </td>
                     <td style="padding: 12px 16px;" class="text-sm text-muted">${channelName || '-'}</td>
+                    <td style="padding: 12px 16px;" class="text-sm text-muted">
+                        <span class="file-tags-display">
+                            ${
+                                tagsStr
+                                    ? tagsStr
+                                        .split(',')
+                                        .map(t => t.trim())
+                                        .filter(Boolean)
+                                        .map(t => `<span class="tag-chip" style="display:inline-block;padding:2px 6px;margin:0 4px 4px 0;border-radius:999px;background:var(--bg-surface-hover);font-size:11px;color:var(--text-secondary);">${t}</span>`)
+                                        .join('')
+                                    : '-'
+                            }
+                        </span>
+                        <button class="btn btn-ghost btn-xs edit-tags-btn" style="margin-left: 4px; font-size: 11px; padding: 2px 6px; height: 22px;">标记</button>
+                    </td>
                     <td style="padding: 12px 16px;" class="text-sm text-muted">${formattedSize}</td>
                     <td style="padding: 12px 16px;" class="text-sm text-muted">${formattedDate}</td>
                     <td style="padding: 12px 16px; text-align: right;">
@@ -561,6 +857,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         container.insertAdjacentHTML('afterbegin', html);
+
+        // 新元素加入后，更新过滤选项并应用过滤
+        rebuildFilterOptionsFromItems();
+        applyFilters();
     }
 
     // --- Global Helpers ---
@@ -603,7 +903,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                  container.innerHTML = `
                     <tr>
-                        <td colspan="5" style="padding: 48px; text-align: center;">
+                        <td colspan="6" style="padding: 48px; text-align: center;">
                             <div class="text-muted">暂无文件</div>
                         </td>
                     </tr>`;
