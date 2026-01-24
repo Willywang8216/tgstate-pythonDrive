@@ -27,38 +27,97 @@ bash -lc 'bash <(curl -fsSL https://raw.githubusercontent.com/buyi06/tgstate-pyt
 
 ---
 
-## ⚙️ 首次配置教程
+## ⚙️ 首次配置與 .env 範例（支援多頻道 / 多群組）
 
-部署后首次访问网页，会进入“引导页”设置管理员密码。之后请进入 **“系统设置”** 完成核心配置。
+部署後首次訪問網頁，會進入「引導頁」設定管理員密碼。之後請進入 **「系統設定」** 完成核心配置。  
+如果你是用 Docker / 一鍵腳本部署，也可以直接透過 `.env` 檔設定環境變數。
 
-### 第一步：获取 BOT_TOKEN
-1.  在 Telegram 搜索 **[@BotFather](https://t.me/BotFather)** 并点击“开始”。
-2.  发送指令 `/newbot` 创建新机器人。
-3.  按提示输入 Name（名字）和 Username（用户名，必须以 `bot` 结尾）。
-4.  成功后，BotFather 会发送一条消息，其中 `Use this token to access the HTTP API:` 下方的那串字符就是 **BOT_TOKEN**。
+### 第一步：取得 BOT_TOKEN
+1. 在 Telegram 搜尋 **[@BotFather](https://t.me/BotFather)** 並點「Start」。
+2. 傳送指令 `/newbot` 建立新機器人。
+3. 依照提示輸入 Name（顯示名稱）與 Username（帳號，必須以 `bot` 結尾）。
+4. 建立成功後，BotFather 會回傳一段文字，其中  
+   `Use this token to access the HTTP API:` 下方那串字串就是 **BOT_TOKEN**。
 
-### 第二步：获取 Chat ID (CHANNEL_NAME)
-1.  **准备群组/频道**：
-    *   您可以新建一个群组或频道（公开或私密均可）。
-    *   **关键操作**：必须将您的机器人拉入该群组/频道，并设为**管理员**（给予读取消息和发送消息的权限）。
-2.  **获取 ID**：
-    *   在群组/频道内随便发送一条文本消息。
-    *   在浏览器访问：`https://api.telegram.org/bot<您的Token>/getUpdates`
-        *   *请将 `<您的Token>` 替换为实际的 BOT_TOKEN。*
-    *   查看返回的 JSON，找到 `chat` 字段下的 `id`。
-        *   通常是以 `-100` 开头的数字（例如 `-1001234567890`）。
-    *   **如果是公开频道**：也可以直接使用频道用户名（例如 `@my_channel_name`）。
+### 第二步：取得 Chat ID / 頻道 ID（CHANNEL_NAME）
 
-> **💡 提示**：如果 `getUpdates` 返回空 (`"result": []`)，请尝试在群里多发几条消息，或者去 @BotFather 关闭机器人的 Group Privacy 模式（`/mybots` -> 选择机器人 -> Bot Settings -> Group Privacy -> Turn off）。
+你可以使用「公開 @username」或「數字 ID」兩種方式標識頻道 / 群組：
 
-### 第三步：填写配置
-回到网页的“系统设置”，填入：
-*   **BOT_TOKEN**: 第一步获取的 Token。
-*   **CHANNEL_NAME**: 第二步获取的 Chat ID（推荐使用数字 ID）。
-*   **BASE_URL** (可选): 您用于对外分享的域名或 IP（例如 `http://1.2.3.4:8000` 或 `https://pan.example.com`）。
-    *   *注意：系统已优化，不填也能自动生成可用的分享链接，但在反向代理环境下，为了 Bot 回复链接的准确性，建议填写。*
+- 公開頻道 / 群組：使用 `@channel_username` 或 `@group_username`
+- 私有頻道 / 群組：使用數字 ID，通常長得像 `-1001234567890`
 
-保存后即可开始使用！
+**取得方式 A：用 getUpdates（適合單一頻道）**
+
+1. 建立一個頻道或群組（公開或私有皆可）。
+2. **務必將機器人加入該頻道 / 群組，並設為「管理員」**（至少要有讀取訊息與發送訊息權限）。
+3. 在該頻道/群組裡隨便發一則訊息。
+4. 在瀏覽器開啟：  
+   `https://api.telegram.org/bot<你的Token>/getUpdates`  
+   （請把 `<你的Token>` 換成剛剛拿到的 BOT_TOKEN）
+5. 查看回傳的 JSON，找到 `chat` 下的 `id` 欄位：
+   - 若是頻道/超級群組，通常是 `-100xxxxxxxxxx` 這種格式。
+6. 若該頻道是公開的，也會有 `username` 欄位，像 `my_channel_name`，這時你就可以直接在 CHANNEL_NAME 裡寫 `@my_channel_name`。
+
+> **💡 小提醒**：  
+> 如果 `getUpdates` 回傳 `"result": []`，請在群組多發幾則訊息，  
+> 或到 @BotFather 關掉 Group Privacy：  
+> `/mybots` → 選擇你的 bot → Bot Settings → Group Privacy → Turn off
+
+**取得方式 B：支援多個頻道 / 群組（多頻道模式）**
+
+本專案現在支援 **多個頻道 / 群組 同時使用**，你可以：
+
+- 建立多個頻道（例如：  
+  - `@team_media`：團隊素材  
+  - `@team_archive`：歸檔備份  
+  - `-1001234567890`：私有群組收集原始檔）
+- 把同一個 Bot 加入所有相關頻道 / 群組，並設為管理員。
+- 對每個頻道重複上述步驟，取得每一個頻道的 `@username` 或數字 ID。
+
+### 第三步：設定 .env / 系統設定（支援多頻道）
+
+你可以選擇：
+
+- 直接修改 `.env`（自架 / Docker 常用）
+- 或在 Web 頁面的「系統設定」輸入對應欄位（會寫入資料庫，優先於 .env）
+
+`.env` 範例（多頻道版本）：
+
+```env
+BOT_TOKEN=1234567890:AA...your_bot_token...
+
+# 同時監聽多個頻道 / 群組，逗號或分號皆可：
+# - 使用 @username（公開頻道/群組）
+# - 使用 -100 開頭的數字 ID（私有頻道/群組）
+# 第一個條目會被視為「預設頻道」，Web 上未特別指定時就會傳到這裡
+CHANNEL_NAME=@team_media,-100111222333,987654321
+
+# Web 管理後台密碼（可選）
+PASS_WORD=你的管理密碼
+
+# PicGo 上傳用 API Key（可選）
+PICGO_API_KEY=your_picgo_api_key
+
+# 對外分享時使用的基底網址（建議設定成你的網域）
+BASE_URL=https://pan.example.com
+```
+
+對應到 Web「系統設定」：
+
+- **BOT_TOKEN**：第一步取得的 Token。
+- **CHANNEL_NAME**：
+  - 單頻道：可填 `@my_channel` 或 `-1001234567890`
+  - 多頻道：支持 `@ch1,-100xxx,123456789` 或 `@ch1; -100xxx; 123456789`
+  - 前端會自動解析為多個頻道，並在上傳區顯示可搜尋的頻道清單。
+- **BASE_URL**（可選）：你實際對外提供服務的網址，例如：
+  - `http://1.2.3.4:8000`
+  - `https://pan.example.com`（有反向代理時建議設定）
+
+> **注意（多頻道模式）**：
+> - Bot 一定要加進所有你填在 CHANNEL_NAME 裡的頻道 / 群組，否則對某些頻道的刪除 / 上傳會失敗。
+> - 老的「單頻道配置」仍然完全可用，你只要填一個值即可，行為和舊版一致。
+
+保存後即可開始使用！
 
 ---
 
