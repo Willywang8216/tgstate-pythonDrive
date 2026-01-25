@@ -28,8 +28,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const filterSizeMin = document.getElementById('filter-size-min');
     const filterSizeMax = document.getElementById('filter-size-max');
     const filterTypes = document.querySelectorAll('.filter-type');
-    const filterSourcesContainer = document.getElementById('filter-sources');
-    const filterTagsContainer = document.getElementById('filter-tags');
+    const filterSourcesInput = document.getElementById('filter-sources-input');
+    const filterSourcesSuggestions = document.getElementById('filter-sources-suggestions');
+    const filterTagsInput = document.getElementById('filter-tags-input');
+    const filterTagsSuggestions = document.getElementById('filter-tags-suggestions');
 
     const filterState = {
         search: '',
@@ -270,50 +272,65 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        if (filterSourcesContainer) {
-            filterSourcesContainer.innerHTML = '';
+        // 渲染来源建议 chips
+        if (filterSourcesSuggestions) {
+            filterSourcesSuggestions.innerHTML = '';
             Array.from(sourcesSet).sort().forEach(src => {
-                const id = `filter-src-${src.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-                const label = document.createElement('label');
-                label.style.fontSize = '12px';
-                label.innerHTML = `<input type="checkbox" class="filter-source" id="${id}" value="${src}"> ${src}`;
-                filterSourcesContainer.appendChild(label);
-            });
-
-            filterSourcesContainer.querySelectorAll('.filter-source').forEach(cb => {
-                cb.addEventListener('change', () => {
-                    if (cb.checked) {
-                        filterState.sources.add(cb.value);
-                    } else {
-                        filterState.sources.delete(cb.value);
-                    }
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'btn btn-ghost btn-xs';
+                chip.style.fontSize = '11px';
+                chip.style.padding = '2px 6px';
+                chip.textContent = src;
+                chip.addEventListener('click', () => {
+                    // 点击 chip 即加入 sources 过滤，并同步到输入框
+                    filterState.sources.add(src);
+                    syncSourcesInputFromState();
                     applyFilters();
                 });
+                filterSourcesSuggestions.appendChild(chip);
             });
         }
 
-        if (filterTagsContainer) {
-            filterTagsContainer.innerHTML = '';
+        // 渲染标签建议 chips
+        if (filterTagsSuggestions) {
+            filterTagsSuggestions.innerHTML = '';
             Array.from(tagsSet).sort().forEach(tag => {
-                const id = `filter-tag-${tag.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-                const label = document.createElement('label');
-                label.style.fontSize = '12px';
-                label.innerHTML = `<input type="checkbox" class="filter-tag" id="${id}" value="${tag.toLowerCase()}"> ${tag}`;
-                filterTagsContainer.appendChild(label);
-            });
-
-            filterTagsContainer.querySelectorAll('.filter-tag').forEach(cb => {
-                cb.addEventListener('change', () => {
-                    const v = cb.value;
-                    if (cb.checked) {
-                        filterState.tags.add(v);
-                    } else {
-                        filterState.tags.delete(v);
-                    }
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'btn btn-ghost btn-xs';
+                chip.style.fontSize = '11px';
+                chip.style.padding = '2px 6px';
+                chip.textContent = tag;
+                chip.addEventListener('click', () => {
+                    const v = tag.toLowerCase();
+                    filterState.tags.add(v);
+                    syncTagsInputFromState();
                     applyFilters();
                 });
+                filterTagsSuggestions.appendChild(chip);
             });
         }
+    }
+
+    function parseCommaInput(value) {
+        if (!value) return [];
+        return value
+            .split(',')
+            .map(t => t.trim())
+            .filter(Boolean);
+    }
+
+    function syncSourcesInputFromState() {
+        if (!filterSourcesInput) return;
+        const arr = Array.from(filterState.sources);
+        filterSourcesInput.value = arr.join(', ');
+    }
+
+    function syncTagsInputFromState() {
+        if (!filterTagsInput) return;
+        const arr = Array.from(filterState.tags);
+        filterTagsInput.value = arr.join(', ');
     }
 
     // --- Search Functionality ---
@@ -371,7 +388,31 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 构建初始来源 / 标签选项
+    // 来源过滤输入框：动态解析用户输入（支持逗号分隔）
+    if (filterSourcesInput) {
+        filterSourcesInput.addEventListener('input', () => {
+            const parts = parseCommaInput(filterSourcesInput.value);
+            filterState.sources.clear();
+            parts.forEach(p => {
+                if (p) filterState.sources.add(p);
+            });
+            applyFilters();
+        });
+    }
+
+    // 标签过滤输入框：动态解析用户输入（支持逗号分隔）
+    if (filterTagsInput) {
+        filterTagsInput.addEventListener('input', () => {
+            const parts = parseCommaInput(filterTagsInput.value.toLowerCase());
+            filterState.tags.clear();
+            parts.forEach(p => {
+                if (p) filterState.tags.add(p);
+            });
+            applyFilters();
+        });
+    }
+
+    // 构建初始来源 / 标签建议 chips
     rebuildFilterOptionsFromItems();
 
     // --- Channel Combobox Logic ---

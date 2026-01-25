@@ -44,13 +44,37 @@
                 <label style="font-size: 12px;"><input type="checkbox" class="filter-type" value="other"> 其它</label>
             </div>
         </div>
-        <div style="min-width: 200px;">
+        <div style="min-width: 220px;">
             <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">来源频道 / 群组</div>
-            <div id="filter-sources" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 90px; overflow-y: auto;"></div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <input
+                    type="text"
+                    id="filter-sources-input"
+                    class="input-field"
+                    placeholder="输入 / 粘贴频道 ID 或 @username，多项用逗号"
+                    style="font-size: 12px;"
+                >
+                <div
+                    id="filter-sources-suggestions"
+                    style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 90px; overflow-y: auto;"
+                ></div>
+            </div>
         </div>
-        <div style="min-width: 200px;">
+        <div style="min-width: 220px;">
             <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">标签</div>
-            <div id="filter-tags" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 90px; overflow-y: auto;"></div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <input
+                    type="text"
+                    id="filter-tags-input"
+                    class="input-field"
+                    placeholder="输入 / 粘贴标签，多项用逗号"
+                    style="font-size: 12px;"
+                >
+                <div
+                    id="filter-tags-suggestions"
+                    style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 90px; overflow-y: auto;"
+                ></div>
+            </div>
         </div>
     </div>
 
