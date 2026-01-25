@@ -114,8 +114,15 @@
                     class="upload-channel-input"
                     placeholder="输入以筛选频道，留空使用默认频道"
                     autocomplete="off"
-                    style="width: 100%; padding: 6px 8px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);"
+                    style="width: 100%; padding: 6px 28px 6px 8px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);"
                 >
+                <button
+                    type="button"
+                    id="upload-channel-clear"
+                    class="btn btn-ghost btn-xs"
+                    style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 12px; padding: 2px 4px;"
+                    aria-label="清除选择频道"
+                >×</button>
                 <div
                     id="upload-channel-dropdown"
                     class="upload-channel-dropdown hidden"
@@ -229,5 +236,5 @@
     </div>
     {% endif %}
 </div>
-<script src="{{ url_for('static', path='/js/main.js') }}?v=4.1"></script>
+<script src="{{ url_for('static', path='/js/main.js') }}?v=4.2"></script>
 {% endblock %}

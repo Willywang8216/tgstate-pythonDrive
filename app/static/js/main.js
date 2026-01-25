@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Channel selection (for multi-channel uploads)
     const channelInput = document.getElementById('upload-channel-input');
     const channelDropdown = document.getElementById('upload-channel-dropdown');
+    const channelClearBtn = document.getElementById('upload-channel-clear');
     let channelOptions = [];
     let primaryChannel = '';
 
@@ -432,6 +433,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (channelInput && channelDropdown) {
+        // 防止点击频道输入区域触发上传区域的点击，导致弹出文件选择窗口
+        channelInput.addEventListener('click', (e) => {
+            e.stopPropagation();
+            renderChannelDropdown(channelInput.value);
+        });
+
         channelInput.addEventListener('focus', () => {
             renderChannelDropdown(channelInput.value);
         });
@@ -440,7 +447,16 @@ document.addEventListener('DOMContentLoaded', () => {
             renderChannelDropdown(channelInput.value);
         });
 
+        if (channelClearBtn) {
+            channelClearBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                channelInput.value = '';
+                channelDropdown.classList.add('hidden');
+            });
+        }
+
         channelDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
             const optionEl = e.target.closest('.channel-option');
             if (!optionEl) return;
             const value = optionEl.dataset.value;
@@ -463,14 +479,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Upload Logic ---
     if (uploadArea && fileInput) {
-        // Prevent double dialog by stopping propagation from input
+        // Prevent double dialog by stopping propagation from file input itself
         fileInput.addEventListener('click', (e) => e.stopPropagation());
 
         uploadArea.addEventListener('click', (e) => {
-             // Only trigger if not clicking the input itself (though propagation stop handles it, this is extra safety)
-             if (e.target !== fileInput) {
-                 fileInput.click();
-             }
+            // 如果点击发生在频道选择器区域内，则不触发文件选择弹窗
+            const channelSelector = document.querySelector('.upload-channel-selector');
+            if (channelSelector && channelSelector.contains(e.target)) {
+                return;
+            }
+            if (e.target === fileInput) return;
+            fileInput.click();
         });
 
         uploadArea.addEventListener('dragover', (event) => {
